@@ -1,0 +1,11 @@
+# Operator-local files — never committed (see docs/plan/04-INTEGRATIONS.md)
+.infisical.json
+.env
+.env.*
+!.env.example
+
+# Dependencies & build output
+node_modules/
+dist/
+build/
+.svelte-kit/
