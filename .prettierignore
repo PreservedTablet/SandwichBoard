@@ -1,0 +1,14 @@
+# Generated / vendored
+pnpm-lock.yaml
+node_modules/
+dist/
+build/
+.svelte-kit/
+data/
+coverage/
+
+# The plan document set is the committed spec — leave its formatting alone
+docs/plan/
+
+# License text is canonical upstream text — never reformat
+LICENSE

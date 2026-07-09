@@ -1,0 +1,17 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Supply-chain posture (docs/plan/05 T3): 72h cooldown before brand-new
+# package releases are eligible for installation.
+minimumReleaseAge: 4320
+
+# Postinstall scripts run only for allow-listed packages (docs/plan/05 T3).
+onlyBuiltDependencies:
+  - esbuild
+
+# GHSA-pxg6-pf52-xh8x: @sveltejs/kit still resolves cookie@0.6.x; lift only
+# the vulnerable range to the patched line (cookie@1.x elsewhere is untouched).
+# Drop this once kit's own range moves past 0.7.0.
+overrides:
+  'cookie@<0.7.0': ^0.7.2

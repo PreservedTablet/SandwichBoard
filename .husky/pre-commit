@@ -1,0 +1,2 @@
+./scripts/precommit-gitleaks.sh
+pnpm exec lint-staged
