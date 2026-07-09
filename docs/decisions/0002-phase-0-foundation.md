@@ -1,4 +1,4 @@
-# 0001 — Phase 0 foundation decisions
+# 0002 — Phase 0 foundation decisions
 
 Date: 2026-07-09. Scope: everything resolved or decided while executing
 Phase 0 of docs/plan/06-BUILD-PLAN.md.
@@ -7,13 +7,11 @@ Phase 0 of docs/plan/06-BUILD-PLAN.md.
 
 ### License text (docs/plan/07)
 
-Upstream renamed the license variant: fsl.software now serves
-`FSL-1.1-ALv2.template.md` and redirects the old `FSL-1.1-Apache-2.0`
-template URL to it (verified 2026-07-09). The committed `LICENSE` matches
-the current canonical template **byte-for-byte** apart from the filled-in
-Notice line (`Copyright 2026 PreservedTablet`). Terms are identical to what
-docs/plan/07 describes; only the abbreviation changed upstream. No file
-change needed.
+Already resolved in [0001-license.md](0001-license.md) at repo setup.
+Independently re-verified this session: the committed `LICENSE` matches the
+current canonical `FSL-1.1-ALv2` template byte-for-byte apart from the
+filled-in Notice line, and the old `FSL-1.1-Apache-2.0` template URL still
+redirects to it. No file change needed.
 
 ### Infisical CLI machine-identity flow + GitHub Action name (docs/plan/00)
 
@@ -95,4 +93,4 @@ proceeded on the plan's own defaults per the maintainer's standing
 | Repo settings via `gh` | No `gh`/admin API in the build session. Exact commands handed to the maintainer (see PHASE-0-EVIDENCE notes in the session log); criterion recorded as **pending maintainer execution**, not silently degraded.        |
 | Infisical project      | Repo-side wiring complete; maintainer creates their own project + machine identity and runs `infisical init` locally. `.env` fallback demonstrated in-session.                                                         |
 | Postgres backend       | Plan default assumed: Postgres 16 container beside Postiz on the home server. In-session migration demo ran against a disposable local PostgreSQL 16.13. Supabase/Neon remain drop-in alternatives via `DATABASE_URL`. |
-| LICENSE Licensor line  | `Copyright 2026 PreservedTablet` was already committed by the maintainer and verified canonical — treated as the maintainer's wording. CONTRIBUTING.md's CLA names the same party.                                     |
+| LICENSE Licensor line  | Pre-answered by [0001-license.md](0001-license.md): `Copyright 2026 PreservedTablet` is the maintainer's recorded wording, re-verified canonical this session. CONTRIBUTING.md's CLA names the same party.             |
