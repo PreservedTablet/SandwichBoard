@@ -59,10 +59,13 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      - name: Secret scan (gitleaks, working tree + full history)
+      - name: Secret scan (gitleaks, full history of the ref under test)
         run: |
           go install github.com/zricethezav/gitleaks/v8@v8.30.1
-          "$(go env GOPATH)/bin/gitleaks" git --redact --no-banner --verbose .
+          # Scope to HEAD's history: fetch-depth 0 fetches all refs, and
+          # gitleaks' default --all would let any sibling branch fail this
+          # ref's build. Each branch answers for its own history.
+          "$(go env GOPATH)/bin/gitleaks" git --redact --no-banner --verbose --log-opts="--full-history HEAD" .
 
       - name: Dependency audit (pnpm audit)
         run: pnpm audit --audit-level high
