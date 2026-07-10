@@ -35,6 +35,7 @@ export {
 export {
 	assetCreateSchema,
 	assetKinds,
+	assetProductionStatuses,
 	assetRowSchema,
 	assetUpdateSchema,
 	copyVariantCreateSchema,
@@ -48,6 +49,7 @@ export {
 	creativeUpdateSchema,
 	type AssetCreate,
 	type AssetKind,
+	type AssetProductionStatus,
 	type AssetRow,
 	type AssetUpdate,
 	type CopyVariantCreate,
