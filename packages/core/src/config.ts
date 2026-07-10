@@ -50,9 +50,16 @@ const configSchema = z
 		SUPABASE_URL: optionalSecret,
 		SUPABASE_SERVICE_ROLE_KEY: optionalSecret,
 
-		// Ingestion (Phase 2)
+		// Guards POST /internal/* (the dashboard's "Sync now" and future
+		// internal commands). Unset ⇒ those endpoints answer 503, loudly.
+		INTERNAL_API_TOKEN: optionalSecret,
+
+		// Ingestion (Phase 2). The Meta sync shells out to Meta's official
+		// Ads CLI (`meta`, PyPI package meta-ads — docs/decisions/0005);
+		// META_ADS_CLI_BIN overrides where to find it.
 		META_SYSTEM_USER_TOKEN: optionalSecret,
 		META_AD_ACCOUNT_ID: optionalSecret,
+		META_ADS_CLI_BIN: z.string().min(1).default('meta'),
 		GOOGLE_ADS_DEVELOPER_TOKEN: optionalSecret,
 		GOOGLE_PROJECT_ID: optionalSecret,
 		GOOGLE_ADS_MCP_OAUTH_CLIENT_ID: optionalSecret,
@@ -116,6 +123,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 	return parsed.data;
 }
 
+/**
+ * OS plumbing (not configuration) for spawning pinned external CLIs: the
+ * child gets PATH/HOME so its interpreter resolves, plus exactly the
+ * credentials the caller passes — never the parent's full environment.
+ * Lives here because this module is the single reader of `process.env`
+ * (CLAUDE.md hard rule); these two names are deliberately not part of the
+ * variable manifest.
+ */
+export function childProcessEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+	const passthrough: Record<string, string> = {};
+	if (env.PATH) passthrough.PATH = env.PATH;
+	if (env.HOME) passthrough.HOME = env.HOME;
+	return passthrough;
+}
+
 function hostOf(connectionString: string): string {
 	try {
 		return new URL(connectionString).hostname || 'unknown';
@@ -135,6 +157,9 @@ export function redactedConfigSummary(cfg: AppConfig): Record<string, string> {
 		ORG_ID: cfg.ORG_ID,
 		DATABASE_URL: `set (host: ${hostOf(cfg.DATABASE_URL)})`,
 		ANALYST_DATABASE_URL: cfg.ANALYST_DATABASE_URL ? 'set' : 'not set',
+		INTERNAL_API_TOKEN: cfg.INTERNAL_API_TOKEN ? 'set' : 'not set',
+		META_SYSTEM_USER_TOKEN: cfg.META_SYSTEM_USER_TOKEN ? 'set' : 'not set',
+		META_AD_ACCOUNT_ID: cfg.META_AD_ACCOUNT_ID ? 'set' : 'not set',
 		STORAGE_DRIVER: cfg.STORAGE_DRIVER,
 		POSTIZ_BASE_URL: cfg.POSTIZ_BASE_URL ?? 'not set',
 		POSTIZ_API_KEY: cfg.POSTIZ_API_KEY ? 'set' : 'not set',

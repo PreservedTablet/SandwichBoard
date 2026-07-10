@@ -1,5 +1,6 @@
 export {
 	ConfigError,
+	childProcessEnv,
 	loadConfig,
 	redactedConfigSummary,
 	storageDrivers,
@@ -32,6 +33,33 @@ export {
 	type UtmMedium,
 	type UtmParams
 } from './utm.js';
+export {
+	EVIDENCE_GATE_DEFAULTS,
+	INGEST_BACKFILL_DAYS,
+	MetricParseError,
+	SETTINGS_KEY_GATE_MIN_IMPRESSIONS,
+	SETTINGS_KEY_GATE_MIN_SPEND_CENTS,
+	SETTINGS_KEY_META_CONVERSION_ACTION_TYPES,
+	parseCount,
+	parseMoneyToCents
+} from './metrics.js';
+export {
+	META_PLATFORM,
+	metaAdAccountSchema,
+	metaActionSchema,
+	metaAdSchema,
+	metaCampaignSchema,
+	metaInsightsResponseSchema,
+	metaInsightsRowSchema,
+	normalizeMetaInsightsRow,
+	type MetaAction,
+	type MetaAd,
+	type MetaAdAccount,
+	type MetaCampaign,
+	type MetaInsightsResponse,
+	type MetaInsightsRow,
+	type NormalizedDailyMetrics
+} from './meta.js';
 export {
 	assetCreateSchema,
 	assetKinds,
