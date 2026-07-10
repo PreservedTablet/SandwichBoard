@@ -22,12 +22,21 @@ source, self-hostable; the cloud free tier is fine):
    infisical init
    ```
 
-4. Run everything through injection:
+4. Run everything through injection. `infisical run` reads only the root
+   folder (`/`) of the environment by default — with the folder layout
+   above you must pass `--path` (repeatable for multiple folders):
 
    ```sh
-   infisical run --env=dev -- pnpm db:migrate
-   infisical run --env=dev -- pnpm dev
+   infisical run --env=dev --path=/api -- pnpm db:migrate
+   infisical run --env=dev --path=/api -- pnpm dev
+   # Phase 2+, when ingestion variables exist:
+   # infisical run --env=dev --path=/api --path=/ingest -- pnpm sync
    ```
+
+   **Troubleshooting:** if the CLI prints `Injecting 0 Infisical secrets`,
+   the env slug or `--path` doesn't match where your secrets live — the
+   command will then fail with a configuration error naming the missing
+   variables.
 
 **Deployed processes** authenticate with an Infisical **machine identity**
 (Universal Auth). Its client-id/secret pair is the single bootstrap
@@ -39,7 +48,8 @@ platform token at once:
 export INFISICAL_TOKEN=$(infisical login --method=universal-auth \
   --client-id=<machine-identity-client-id> \
   --client-secret=<machine-identity-client-secret> --silent --plain)
-infisical run --projectId=<your-project-id> --env=prod -- pnpm sync
+infisical run --projectId=<your-project-id> --env=prod \
+  --path=/api --path=/ingest -- pnpm sync
 ```
 
 **Fallback without Infisical:** copy `.env.example` to `.env` (gitignored),
@@ -55,7 +65,7 @@ home server; Supabase and Neon work identically (docs/plan/02). Point
 `DATABASE_URL` (Infisical `/api`) at it, then:
 
 ```sh
-infisical run --env=dev -- pnpm db:migrate
+infisical run --env=dev --path=/api -- pnpm db:migrate
 ```
 
 Migrations are plain SQL in `db/migrations/`, applied in order, once each,
