@@ -18,6 +18,8 @@
 		"db:migrate:local": "dotenv -e .env -- pnpm db:migrate",
 		"import:library": "pnpm --filter @sandwichboard/api import:library",
 		"import:library:local": "dotenv -e .env -- pnpm import:library",
+		"sync": "pnpm --filter @sandwichboard/api sync",
+		"sync:local": "dotenv -e .env -- pnpm sync",
 		"prepare": "husky"
 	},
 	"lint-staged": {

@@ -10,6 +10,7 @@
 		"test": "vitest run",
 		"db:migrate": "tsx src/db/migrate.ts",
 		"import:library": "tsx src/cli/import-library.ts",
+		"sync": "tsx src/cli/sync.ts",
 		"clean": "rm -rf dist *.tsbuildinfo"
 	},
 	"dependencies": {
