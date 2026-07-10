@@ -21,7 +21,7 @@ const listQuerySchema = z.object({
 });
 
 const COPY_COLUMNS =
-	'id, org_id, kind, body, angle, tone, char_count, tags, created_at, updated_at';
+	'id, org_id, kind, body, angle, tone, char_count, tags, notes, import_ref, created_at, updated_at';
 
 export function registerCopyVariantRoutes(app: FastifyInstance, deps: RouteDeps): void {
 	const { db } = deps;
@@ -54,9 +54,18 @@ export function registerCopyVariantRoutes(app: FastifyInstance, deps: RouteDeps)
 	app.post('/api/copy-variants', async (request, reply) => {
 		const body = copyVariantCreateSchema.parse(request.body);
 		const { rows } = await db.query(
-			`insert into copy_variants (org_id, kind, body, angle, tone, tags)
-			 values ($1, $2, $3, $4, $5, $6) returning ${COPY_COLUMNS}`,
-			[db.orgId, body.kind, body.body, body.angle ?? null, body.tone ?? null, body.tags]
+			`insert into copy_variants (org_id, kind, body, angle, tone, tags, notes, import_ref)
+			 values ($1, $2, $3, $4, $5, $6, $7, $8) returning ${COPY_COLUMNS}`,
+			[
+				db.orgId,
+				body.kind,
+				body.body,
+				body.angle ?? null,
+				body.tone ?? null,
+				body.tags,
+				body.notes ?? null,
+				body.import_ref ?? null
+			]
 		);
 		return reply.status(201).send(rows[0]);
 	});

@@ -30,14 +30,18 @@ describe.skipIf(!TEST_DATABASE_URL)('creative library API (integration)', () => 
 	beforeAll(async () => {
 		await runMigrations(TEST_DATABASE_URL!);
 		db = createOrgDb(TEST_DATABASE_URL!, ORG);
-		// The delete guard (migration 0002) protects non-draft combos even from
-		// the owner role; demote leftovers from a previous run before wiping.
-		await db.query(`update creatives set status = 'draft' where status <> 'draft'`);
-		await db.query('delete from creatives');
-		await db.query('delete from copy_variants');
-		await db.query('delete from assets');
-		await db.query('delete from settings');
-		await db.query('delete from audit_log');
+		// Org-scoped cleanup only (parallel suites share the database), and the
+		// delete guard (migration 0002) protects non-draft combos even from the
+		// owner role — demote leftovers from a previous run before wiping.
+		await db.query(
+			`update creatives set status = 'draft' where org_id = $1 and status <> 'draft'`,
+			[ORG]
+		);
+		await db.query('delete from creatives where org_id = $1', [ORG]);
+		await db.query('delete from copy_variants where org_id = $1', [ORG]);
+		await db.query('delete from assets where org_id = $1', [ORG]);
+		await db.query('delete from settings where org_id = $1', [ORG]);
+		await db.query('delete from audit_log where org_id = $1', [ORG]);
 		storageDir = await mkdtemp(join(tmpdir(), 'sb-storage-'));
 		app = buildApp({ logLevel: 'silent', deps: { db, storage: new LocalFsStorage(storageDir) } });
 	});

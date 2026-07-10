@@ -16,6 +16,8 @@
 		"typecheck": "pnpm -r --if-present typecheck",
 		"db:migrate": "pnpm --filter @sandwichboard/api db:migrate",
 		"db:migrate:local": "dotenv -e .env -- pnpm db:migrate",
+		"import:library": "pnpm --filter @sandwichboard/api import:library",
+		"import:library:local": "dotenv -e .env -- pnpm import:library",
 		"prepare": "husky"
 	},
 	"lint-staged": {

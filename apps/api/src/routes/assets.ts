@@ -1,5 +1,11 @@
+import { createHash } from 'node:crypto';
 import { Transform } from 'node:stream';
-import { assetCreateSchema, assetKinds, assetUpdateSchema } from '@sandwichboard/core';
+import {
+	assetCreateSchema,
+	assetKinds,
+	assetProductionStatuses,
+	assetUpdateSchema
+} from '@sandwichboard/core';
 import type { FastifyInstance } from 'fastify';
 import type { Readable } from 'node:stream';
 import { z } from 'zod';
@@ -40,6 +46,7 @@ const CONTENT_TYPES: Record<string, { ext: string; inline: boolean }> = {
 
 const listQuerySchema = z.object({
 	kind: z.enum(assetKinds).optional(),
+	production_status: z.enum(assetProductionStatuses).optional(),
 	tag: tagFilterSchema,
 	q: z.string().trim().min(1).max(200).optional(),
 	...pageSchema
@@ -65,7 +72,7 @@ function byteLimit(maxBytes: number): Transform {
 }
 
 const ASSET_COLUMNS =
-	'id, org_id, kind, title, storage_path, storage_content_type, external_url, width, height, duration_s::float8 as duration_s, tags, source, created_at, updated_at';
+	'id, org_id, kind, title, production_status, storage_path, storage_content_type, storage_sha256, external_url, width, height, duration_s::float8 as duration_s, aspect_ratio, angle, tags, source, notes, import_ref, created_at, updated_at';
 
 export function registerAssetRoutes(app: FastifyInstance, deps: RouteDeps): void {
 	const { db, storage, fileTokens } = deps;
@@ -77,6 +84,10 @@ export function registerAssetRoutes(app: FastifyInstance, deps: RouteDeps): void
 		if (query.kind) {
 			params.push(query.kind);
 			where.push(`kind = $${params.length}`);
+		}
+		if (query.production_status) {
+			params.push(query.production_status);
+			where.push(`production_status = $${params.length}`);
 		}
 		if (query.tag.length > 0) {
 			params.push(query.tag);
@@ -98,19 +109,25 @@ export function registerAssetRoutes(app: FastifyInstance, deps: RouteDeps): void
 	app.post('/api/assets', async (request, reply) => {
 		const body = assetCreateSchema.parse(request.body);
 		const { rows } = await db.query(
-			`insert into assets (org_id, kind, title, external_url, width, height, duration_s, tags, source)
-			 values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			`insert into assets (org_id, kind, title, production_status, external_url, width, height,
+			                     duration_s, aspect_ratio, angle, tags, source, notes, import_ref)
+			 values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 			 returning ${ASSET_COLUMNS}`,
 			[
 				db.orgId,
 				body.kind,
 				body.title,
+				body.production_status,
 				body.external_url ?? null,
 				body.width ?? null,
 				body.height ?? null,
 				body.duration_s ?? null,
+				body.aspect_ratio ?? null,
+				body.angle ?? null,
 				body.tags,
-				body.source ?? null
+				body.source ?? null,
+				body.notes ?? null,
+				body.import_ref ?? null
 			]
 		);
 		return reply.status(201).send(rows[0]);
@@ -186,15 +203,24 @@ export function registerAssetRoutes(app: FastifyInstance, deps: RouteDeps): void
 
 		const key = `assets/${id}/original${spec.ext}`;
 		const body = request.body as Readable;
-		await storage.put(key, body.pipe(byteLimit(MAX_UPLOAD_BYTES)), { contentType });
+		// Hash while streaming: the digest enables "do I already have this
+		// file?" dedupe across a messy asset collection.
+		const hash = createHash('sha256');
+		const hashTap = new Transform({
+			transform(chunk: Buffer, _enc, done) {
+				hash.update(chunk);
+				done(null, chunk);
+			}
+		});
+		await storage.put(key, body.pipe(byteLimit(MAX_UPLOAD_BYTES)).pipe(hashTap), { contentType });
 
 		const previous = existing.rows[0].storage_path;
 		if (previous && previous !== key) await storage.delete(previous);
 
 		const { rows } = await db.query(
-			`update assets set storage_path = $3, storage_content_type = $4
+			`update assets set storage_path = $3, storage_content_type = $4, storage_sha256 = $5
 			 where org_id = $1 and id = $2 returning ${ASSET_COLUMNS}`,
-			[db.orgId, id, key, contentType]
+			[db.orgId, id, key, contentType, hash.digest('hex')]
 		);
 		return rows[0];
 	});

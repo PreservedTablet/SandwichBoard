@@ -30,7 +30,7 @@ const listQuerySchema = z.object({
 
 const JOINED_COLUMNS = `
 	c.id, c.org_id, c.short_code, c.asset_id, c.headline_id, c.primary_text_id,
-	c.cta_id, c.angle, c.status, c.notes, c.created_at, c.updated_at,
+	c.cta_id, c.angle, c.status, c.landing_path, c.notes, c.created_at, c.updated_at,
 	a.title as asset_title, a.kind as asset_kind, a.storage_path as asset_storage_path,
 	h.body as headline_body, p.body as primary_text_body, t.body as cta_body`;
 
@@ -79,8 +79,8 @@ export function registerCreativeRoutes(app: FastifyInstance, deps: RouteDeps): v
 		const body = creativeCreateSchema.parse(request.body);
 		const created = await db.tx(async (client) => {
 			const { rows } = await client.query(
-				`insert into creatives (org_id, asset_id, headline_id, primary_text_id, cta_id, angle, notes, status)
-				 values ($1, $2, $3, $4, $5, $6, $7, $8) returning *`,
+				`insert into creatives (org_id, asset_id, headline_id, primary_text_id, cta_id, angle, landing_path, notes, status)
+				 values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning *`,
 				[
 					db.orgId,
 					body.asset_id ?? null,
@@ -88,6 +88,7 @@ export function registerCreativeRoutes(app: FastifyInstance, deps: RouteDeps): v
 					body.primary_text_id ?? null,
 					body.cta_id ?? null,
 					body.angle ?? null,
+					body.landing_path ?? null,
 					body.notes ?? null,
 					body.status
 				]
