@@ -60,11 +60,12 @@ pnpm dev:local              # boots apps/api (:3000) and apps/web (:5173)
 ```
 
 With your own Infisical project linked (`infisical init` — see
-[docs/setup.md](docs/setup.md)):
+[docs/setup.md](docs/setup.md); `--path` matters if you store secrets in
+folders):
 
 ```sh
-infisical run --env=dev -- pnpm db:migrate
-infisical run --env=dev -- pnpm dev
+infisical run --env=dev --path=/api -- pnpm db:migrate
+infisical run --env=dev --path=/api -- pnpm dev
 ```
 
 ## Repository layout
