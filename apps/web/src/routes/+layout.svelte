@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import favicon from '$lib/assets/favicon.svg';
+	import SyncBanner from '$lib/components/SyncBanner.svelte';
 
 	let { children } = $props();
 
@@ -35,5 +36,6 @@
 			{/each}
 		</nav>
 	</header>
+	<SyncBanner />
 	{@render children()}
 </div>

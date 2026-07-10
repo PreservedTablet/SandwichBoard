@@ -64,6 +64,43 @@ export interface SettingRow {
 	updated_at: string;
 }
 
+/** Summary of one sync run (audit payload / POST /internal/ingest/meta). */
+export interface SyncRunSummary {
+	platform: string;
+	trigger: 'api' | 'cli';
+	account: {
+		external_account_id: string;
+		label: string;
+		currency: string | null;
+		timezone: string | null;
+	};
+	range: { since: string; until: string };
+	watermark: string | null;
+	campaigns_synced: number;
+	ads_synced: number;
+	ads_matched: number;
+	ads_unmatched: number;
+	snapshot_rows_upserted: number;
+	deadletters: number;
+	duration_ms: number;
+}
+
+export interface SyncPlatformStatus {
+	platform: string;
+	configured: boolean;
+	last_success_at: string | null;
+	last_success_summary: SyncRunSummary | null;
+	last_failure_at: string | null;
+	last_failure_error: string | null;
+}
+
+export interface SyncStatus {
+	data_through: string | null;
+	unmatched_ads: number;
+	open_deadletters: number;
+	platforms: SyncPlatformStatus[];
+}
+
 export function createApi(fetchFn: Fetch = fetch) {
 	return {
 		listSettings: () => request<{ items: SettingRow[] }>(fetchFn, 'GET', '/api/settings'),
@@ -109,7 +146,20 @@ export function createApi(fetchFn: Fetch = fetch) {
 			request<CreativeListItem>(fetchFn, 'PATCH', `/api/creatives/${id}`, patch),
 		deleteCreative: (id: string) => request<void>(fetchFn, 'DELETE', `/api/creatives/${id}`),
 		adName: (id: string, params: URLSearchParams) =>
-			request<AdNameResponse>(fetchFn, 'GET', `/api/creatives/${id}/ad-name?${params}`)
+			request<AdNameResponse>(fetchFn, 'GET', `/api/creatives/${id}/ad-name?${params}`),
+
+		syncStatus: () => request<SyncStatus>(fetchFn, 'GET', '/api/sync/status'),
+		// /internal/* is a command surface guarded by a bearer token the
+		// operator pastes once per browser session (docs/decisions/0005).
+		runMetaSync: async (internalToken: string): Promise<SyncRunSummary> => {
+			const res = await fetchFn('/internal/ingest/meta', {
+				method: 'POST',
+				headers: { authorization: `Bearer ${internalToken}` }
+			});
+			const json = await res.json();
+			if (!res.ok) throw new ApiError(res.status, json);
+			return json as SyncRunSummary;
+		}
 	};
 }
 
