@@ -29,8 +29,7 @@ source, self-hostable; the cloud free tier is fine):
    ```sh
    infisical run --env=dev --path=/api -- pnpm db:migrate
    infisical run --env=dev --path=/api -- pnpm dev
-   # Phase 2+, when ingestion variables exist:
-   # infisical run --env=dev --path=/api --path=/ingest -- pnpm sync
+   infisical run --env=dev --path=/api --path=/ingest -- pnpm sync
    ```
 
    **Troubleshooting:** if the CLI prints `Injecting 0 Infisical secrets`,
@@ -93,6 +92,48 @@ Validation is all-or-nothing, writes are one transaction, re-runs are
 idempotent (`--dry-run` to preview). The importer speaks only
 SandwichBoard's format by design: no legacy tracker's structure ever gets
 wired into the codebase.
+
+## 3.6 Meta ingestion (Phase 2)
+
+The manual range sync pulls per-ad daily insights through **Meta's official
+Ads CLI** — auth model, command contract, and the reasoning live in
+[docs/decisions/0005-meta-ingestion.md](decisions/0005-meta-ingestion.md).
+
+1. **Install the CLI** wherever syncs run (Python ≥ 3.12 required). Pin the
+   verified version — PyPI also hosts an unrelated third-party
+   `meta-ads-cli`; the official package is **`meta-ads`**:
+
+   ```sh
+   uv tool install 'meta-ads==1.1.0'   # or: pipx install 'meta-ads==1.1.0'
+   ```
+
+   If `meta` is not on the sync process's PATH, set `META_ADS_CLI_BIN`.
+
+2. **Provision the credential** (Business Manager → Business settings →
+   Users → System users): create a system user (Employee role suffices),
+   assign your ad account with **View performance** access only, generate a
+   token scoped to **`ads_read`** — nothing broader; a stolen sync token
+   must only be able to read stats, never spend. Store it as
+   `META_SYSTEM_USER_TOKEN` (Infisical `/ingest`) together with
+   `META_AD_ACCOUNT_ID` (`act_…`). Set a quarterly rotation reminder.
+
+3. **Set `INTERNAL_API_TOKEN`** (Infisical `/api`, e.g.
+   `openssl rand -hex 32`) to enable the dashboard's "Sync now" button —
+   the browser asks for it once per session. Without it the button's
+   endpoint answers 503; `pnpm sync` works regardless (it talks to the
+   database directly).
+
+4. **Run it.** Sync is range-based catch-up: each run pulls from the last
+   snapshot (or a 90-day backfill on first run) through yesterday in the ad
+   account's timezone, idempotently — any cadence is correct.
+
+   ```sh
+   infisical run --env=prod --path=/api --path=/ingest -- pnpm sync
+   ```
+
+   Every run writes an `audit_log` summary; rows the sync can't use land in
+   `ingest_deadletter`, and ads whose names don't match the naming
+   convention surface in `v_unmatched_ads`.
 
 ## 4. Claude Code session profiles
 
