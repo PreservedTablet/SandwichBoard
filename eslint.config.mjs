@@ -16,6 +16,13 @@ export default ts.config(
 		}
 	},
 	{
+		// apps/web renders client-side only (+layout.ts ssr=false)
+		files: ['apps/web/src/**'],
+		languageOptions: {
+			globals: { ...globals.browser }
+		}
+	},
+	{
 		files: ['**/*.svelte', '**/*.svelte.ts', '**/*.svelte.js'],
 		languageOptions: {
 			parserOptions: {

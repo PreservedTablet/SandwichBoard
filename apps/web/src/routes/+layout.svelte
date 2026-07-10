@@ -1,11 +1,39 @@
 <script lang="ts">
+	import '../app.css';
+	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 	import favicon from '$lib/assets/favicon.svg';
 
 	let { children } = $props();
+
+	const sections = [
+		{ href: resolve('/library'), label: 'Library' },
+		{ href: resolve('/library/copy'), label: 'Copy' },
+		{ href: resolve('/combos'), label: 'Combos' }
+	] as const;
+
+	function isActive(href: string): boolean {
+		const path = page.url.pathname;
+		if (href === resolve('/library')) {
+			return path === href || path.startsWith(href + '/assets');
+		}
+		return path === href || path.startsWith(href + '/');
+	}
 </script>
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
+	<title>SandwichBoard</title>
 </svelte:head>
 
-{@render children()}
+<div class="shell">
+	<header class="topbar">
+		<a class="brand" href={resolve('/library')}>SandwichBoard</a>
+		<nav>
+			{#each sections as section (section.href)}
+				<a href={section.href} class={isActive(section.href) ? 'active' : ''}>{section.label}</a>
+			{/each}
+		</nav>
+	</header>
+	{@render children()}
+</div>
