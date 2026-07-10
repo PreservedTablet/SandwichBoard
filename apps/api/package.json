@@ -1,0 +1,26 @@
+{
+	"name": "@sandwichboard/api",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "tsx watch src/server.ts",
+		"build": "tsc -b",
+		"typecheck": "tsc -b",
+		"test": "vitest run",
+		"db:migrate": "tsx src/db/migrate.ts",
+		"clean": "rm -rf dist *.tsbuildinfo"
+	},
+	"dependencies": {
+		"@sandwichboard/core": "workspace:*",
+		"fastify": "^5.10.0",
+		"pg": "^8.22.0"
+	},
+	"devDependencies": {
+		"@types/node": "^26.1.0",
+		"@types/pg": "^8.20.0",
+		"tsx": "^4.23.0",
+		"typescript": "^6.0.3",
+		"vitest": "^4.1.10"
+	}
+}

@@ -9,3 +9,17 @@ node_modules/
 dist/
 build/
 .svelte-kit/
+*.tsbuildinfo
+
+# Local storage adapter root (operator data, never committed)
+data/
+
+# Test & tooling output
+coverage/
+
+# Local tool state
+.claude/settings.local.json
+
+# OS noise
+.DS_Store
+Thumbs.db

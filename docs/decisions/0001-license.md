@@ -19,4 +19,4 @@ The terms are unchanged — same grant, same Competing Use restriction, same irr
 
 ## Also in this change
 
-`docs/plan/03-DATA-MODEL.md`'s `audit_log` example actor `'gabriel'` was replaced with `'operator'` before first commit, per the no-personal-identifiers rule (06 CLAUDE.md draft; Phase 0 acceptance grep; threat T4 "every commit is forever").
+`docs/plan/03-DATA-MODEL.md`'s `audit_log` example actor was originally a personal first name; it was replaced with `'operator'` before first commit, per the no-personal-identifiers rule (06 CLAUDE.md draft; Phase 0 acceptance grep; threat T4 "every commit is forever"). This record states the fact without repeating the literal so the acceptance grep stays clean.

@@ -1,0 +1,44 @@
+{
+	"name": "sandwichboard",
+	"version": "0.1.0",
+	"private": true,
+	"packageManager": "pnpm@10.33.0",
+	"engines": {
+		"node": ">=22.12"
+	},
+	"scripts": {
+		"dev": "pnpm --filter @sandwichboard/core build && pnpm -r --parallel --stream dev",
+		"dev:local": "dotenv -e .env -- pnpm dev",
+		"build": "pnpm -r build",
+		"test": "pnpm -r --if-present test",
+		"lint": "prettier --check . && eslint .",
+		"format": "prettier --write .",
+		"typecheck": "pnpm -r --if-present typecheck",
+		"db:migrate": "pnpm --filter @sandwichboard/api db:migrate",
+		"db:migrate:local": "dotenv -e .env -- pnpm db:migrate",
+		"prepare": "husky"
+	},
+	"lint-staged": {
+		"*.{js,mjs,ts,svelte}": [
+			"prettier --write",
+			"eslint --fix"
+		],
+		"*.{json,md,yml,yaml,css,html}": [
+			"prettier --write"
+		]
+	},
+	"devDependencies": {
+		"@eslint/js": "^10.0.1",
+		"dotenv-cli": "^11.0.0",
+		"eslint": "^10.6.0",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-plugin-svelte": "^3.20.0",
+		"globals": "^17.7.0",
+		"husky": "^9.1.7",
+		"lint-staged": "^17.0.8",
+		"prettier": "^3.9.4",
+		"prettier-plugin-svelte": "^4.1.1",
+		"typescript": "^6.0.3",
+		"typescript-eslint": "^8.63.0"
+	}
+}

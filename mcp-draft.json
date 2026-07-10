@@ -1,0 +1,8 @@
+{
+	"mcpServers": {
+		"sandwichboard-db-analyst": {
+			"command": "npx",
+			"args": ["-y", "@modelcontextprotocol/server-postgres@0.6.2", "${ANALYST_DATABASE_URL}"]
+		}
+	}
+}

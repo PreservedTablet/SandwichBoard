@@ -1,0 +1,106 @@
+# SandwichBoard CI (docs/plan/06 Phase 0).
+#
+# Deliberately absent, forever: schedule triggers of any kind. Every job in
+# this repository is human-invoked (docs/plan/02 — manual-first). A gate step
+# below enforces this for all workflow files.
+#
+# All actions are pinned by commit SHA (docs/plan/05 T3). CI needs no
+# secrets: lint, typecheck, tests, and scanners all run secretless.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history so gitleaks scans every commit)
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Set up Go (builds the pinned security scanners)
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          # osv-scanner v2.4.0 requires go >= 1.26.4 (setup-go pins GOTOOLCHAIN=local)
+          go-version: '1.26'
+          cache: false
+
+      - name: Secret scan (gitleaks, full history of the ref under test)
+        run: |
+          go install github.com/zricethezav/gitleaks/v8@v8.30.1
+          # Scope to HEAD's history: fetch-depth 0 fetches all refs, and
+          # gitleaks' default --all would let any sibling branch fail this
+          # ref's build. Each branch answers for its own history.
+          "$(go env GOPATH)/bin/gitleaks" git --redact --no-banner --verbose --log-opts="--full-history HEAD" .
+
+      - name: Dependency audit (pnpm audit)
+        run: pnpm audit --audit-level high
+
+      - name: Dependency audit (osv-scanner, lockfile)
+        run: |
+          go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.4.0
+          "$(go env GOPATH)/bin/osv-scanner" scan source -L pnpm-lock.yaml
+
+      - name: Forbidden-string gate (no Anthropic API key variable, anywhere)
+        run: |
+          set -euo pipefail
+          # The pattern is assembled so this workflow never contains the
+          # forbidden string itself. docs/plan/ is the one allowed location:
+          # the committed planning docs describe this very rule.
+          pattern='ANTHROPIC''_API_KEY'
+          hits=$(grep -RIn --exclude-dir=.git --exclude-dir=node_modules -e "$pattern" . | grep -v '^\./docs/plan/' || true)
+          if [ -n "$hits" ]; then
+            echo "$hits"
+            echo "::error::forbidden string present outside docs/plan — SandwichBoard makes no Anthropic API calls (docs/plan/04)"
+            exit 1
+          fi
+          echo "clean: no occurrences outside docs/plan"
+
+      - name: No-scheduler gate (workflows must stay human-invoked)
+        run: |
+          set -euo pipefail
+          schedule_key='schedule'':'
+          cron_key='cron'':'
+          if grep -REn "^[[:space:]]*${schedule_key}" .github/workflows; then
+            echo "::error::a workflow gained a schedule trigger — forbidden by docs/plan/06"
+            exit 1
+          fi
+          if grep -REn "^[[:space:]]*-?[[:space:]]*${cron_key}" .github/workflows; then
+            echo "::error::a workflow gained a cron key — forbidden by docs/plan/06"
+            exit 1
+          fi
+          echo "clean: no scheduled triggers in any workflow"
