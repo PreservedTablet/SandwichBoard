@@ -23,6 +23,12 @@ const configSchema = z
 		API_HOST: z.string().min(1).default('127.0.0.1'),
 		API_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
 
+		// Tenancy scope for this deployment. v1 is single-operator: every row
+		// the API reads/writes carries this org_id (docs/plan/03 keeps the
+		// column so multi-tenancy is a retrofit-free future). The nil-UUID
+		// default is fine for any solo deployment.
+		ORG_ID: z.uuid().default('00000000-0000-0000-0000-000000000000'),
+
 		// Privileged application role — injected into apps/api only, never the browser
 		DATABASE_URL: z
 			.string()
@@ -126,6 +132,7 @@ export function redactedConfigSummary(cfg: AppConfig): Record<string, string> {
 	const summary: Record<string, string> = {
 		NODE_ENV: cfg.NODE_ENV,
 		api: `${cfg.API_HOST}:${cfg.API_PORT}`,
+		ORG_ID: cfg.ORG_ID,
 		DATABASE_URL: `set (host: ${hostOf(cfg.DATABASE_URL)})`,
 		ANALYST_DATABASE_URL: cfg.ANALYST_DATABASE_URL ? 'set' : 'not set',
 		STORAGE_DRIVER: cfg.STORAGE_DRIVER,
