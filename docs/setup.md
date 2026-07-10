@@ -78,6 +78,22 @@ Never edit an applied migration — add a new one.
 (default `data/storage`, gitignored). S3-compatible and Supabase Storage
 drivers are planned additions behind the same adapter interface.
 
+## 3.5 Importing an existing library
+
+Leaving a spreadsheet behind? Reshape it once into the documented exchange
+format ([docs/import-format.md](import-format.md)) — plain CSVs using the
+library's own columns — drop the files somewhere gitignored (suggested:
+`data/import/`), and run:
+
+```sh
+infisical run --env=dev --path=/api -- pnpm import:library data/import/assets.csv data/import/copy.csv
+```
+
+Validation is all-or-nothing, writes are one transaction, re-runs are
+idempotent (`--dry-run` to preview). The importer speaks only
+SandwichBoard's format by design: no legacy tracker's structure ever gets
+wired into the codebase.
+
 ## 4. Claude Code session profiles
 
 Two MCP profiles ship with the repo (docs/plan/05 T1 — session separation is
