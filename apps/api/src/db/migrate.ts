@@ -58,13 +58,13 @@ async function findRepoRoot(startDir: string): Promise<string> {
 	}
 }
 
-export async function runMigrations(): Promise<void> {
-	const config = loadConfig();
+export async function runMigrations(databaseUrl?: string): Promise<void> {
+	const connectionString = databaseUrl ?? loadConfig().DATABASE_URL;
 	const repoRoot = await findRepoRoot(dirname(fileURLToPath(import.meta.url)));
 	const migrationsDir = join(repoRoot, 'db', 'migrations');
 	const files = orderMigrations(await readdir(migrationsDir));
 
-	const client = new pg.Client({ connectionString: config.DATABASE_URL });
+	const client = new pg.Client({ connectionString });
 	await client.connect();
 	try {
 		await client.query('select pg_advisory_lock($1)', [ADVISORY_LOCK_ID]);
