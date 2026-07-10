@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { assetProductionStatuses } from '@sandwichboard/core';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { api, ApiError } from '$lib/api';
@@ -14,11 +15,19 @@
 	let tags = $state('');
 	let source = $state('');
 	let externalUrl = $state('');
+	let productionStatus = $state('ready');
+	let angle = $state('');
+	let aspectRatio = $state('');
+	let notes = $state('');
 	$effect(() => {
 		title = asset.title;
 		tags = asset.tags.join(', ');
 		source = asset.source ?? '';
 		externalUrl = asset.external_url ?? '';
+		productionStatus = asset.production_status;
+		angle = asset.angle ?? '';
+		aspectRatio = asset.aspect_ratio ?? '';
+		notes = asset.notes ?? '';
 	});
 
 	async function saveMeta(event: SubmitEvent) {
@@ -28,12 +37,16 @@
 		try {
 			await api.updateAsset(asset.id, {
 				title,
+				production_status: productionStatus,
 				tags: tags
 					.split(',')
 					.map((tag) => tag.trim().toLowerCase())
 					.filter(Boolean),
 				source: source.trim() ? source.trim() : null,
-				external_url: externalUrl.trim() ? externalUrl.trim() : null
+				external_url: externalUrl.trim() ? externalUrl.trim() : null,
+				angle: angle.trim() ? angle.trim() : null,
+				aspect_ratio: aspectRatio.trim() ? aspectRatio.trim() : null,
+				notes: notes.trim() ? notes.trim() : null
 			});
 			await invalidateAll();
 		} catch (err) {
@@ -140,15 +153,33 @@
 <div class="panel">
 	<h2 style="margin-top: 0;">Details</h2>
 	<form class="stack" onsubmit={saveMeta}>
-		<label class="field">
-			Title
-			<input bind:value={title} required maxlength="200" />
-		</label>
+		<div class="row">
+			<label class="field" style="flex: 1; min-width: 220px;">
+				Title
+				<input bind:value={title} required maxlength="200" />
+			</label>
+			<label class="field">
+				Production status
+				<select bind:value={productionStatus}>
+					{#each assetProductionStatuses as status (status)}
+						<option value={status}>{status.replace('_', ' ')}</option>
+					{/each}
+				</select>
+			</label>
+		</div>
 		<label class="field">
 			Tags (comma-separated)
 			<input bind:value={tags} />
 		</label>
 		<div class="row">
+			<label class="field">
+				Angle
+				<input bind:value={angle} placeholder="cost" />
+			</label>
+			<label class="field">
+				Aspect ratio
+				<input bind:value={aspectRatio} placeholder="4:5" pattern="\d+:\d+" />
+			</label>
 			<label class="field" style="flex: 1;">
 				External URL
 				<input bind:value={externalUrl} type="url" placeholder="https://…" />
@@ -158,6 +189,10 @@
 				<input bind:value={source} />
 			</label>
 		</div>
+		<label class="field">
+			Notes (briefs, hooks, production details)
+			<textarea bind:value={notes}></textarea>
+		</label>
 		<div class="row">
 			<button class="primary" type="submit" disabled={busy}>Save</button>
 			<button type="button" class="danger" onclick={removeAsset} disabled={busy}
@@ -167,6 +202,8 @@
 	</form>
 	<p class="muted" style="margin-bottom: 0;">
 		Created {new Date(asset.created_at).toLocaleString()} · updated
-		{new Date(asset.updated_at).toLocaleString()}
+		{new Date(asset.updated_at).toLocaleString()}{#if asset.import_ref}
+			· imported as <span class="mono">{asset.import_ref}</span>{/if}{#if asset.storage_sha256}
+			· sha256 <span class="mono">{asset.storage_sha256.slice(0, 12)}…</span>{/if}
 	</p>
 </div>

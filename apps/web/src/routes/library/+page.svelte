@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { assetKinds } from '@sandwichboard/core';
+	import { assetKinds, assetProductionStatuses } from '@sandwichboard/core';
 	import { SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -13,11 +13,26 @@
 	// Tag cloud comes from what's loaded — enough at library scale.
 	const allTags = $derived([...new Set(data.assets.flatMap((asset) => asset.tags))].sort());
 
-	function toggleParam(name: 'kind' | 'tag', value: string) {
+	const statusCounts = $derived(
+		data.assets.reduce(
+			(acc, asset) => {
+				acc[asset.production_status] = (acc[asset.production_status] ?? 0) + 1;
+				return acc;
+			},
+			{} as Record<string, number>
+		)
+	);
+	const visibleAssets = $derived(
+		data.activeStatus
+			? data.assets.filter((asset) => asset.production_status === data.activeStatus)
+			: data.assets
+	);
+
+	function toggleParam(name: 'kind' | 'tag' | 'status', value: string) {
 		const params = new SvelteURLSearchParams(page.url.searchParams);
-		if (name === 'kind') {
-			if (params.get('kind') === value) params.delete('kind');
-			else params.set('kind', value);
+		if (name === 'kind' || name === 'status') {
+			if (params.get(name) === value) params.delete(name);
+			else params.set(name, value);
 		} else {
 			const tags = new SvelteSet(params.getAll('tag'));
 			if (tags.has(value)) tags.delete(value);
@@ -104,6 +119,18 @@
 	</div>
 {/if}
 
+<div class="row" style="margin-bottom: 0.5rem;">
+	<span class="badge">Production</span>
+	{#each assetProductionStatuses as status (status)}
+		<button
+			class="chip {data.activeStatus === status ? 'on' : ''}"
+			onclick={() => toggleParam('status', status)}
+		>
+			{status.replace('_', ' ')}{statusCounts[status] ? ` · ${statusCounts[status]}` : ''}
+		</button>
+	{/each}
+</div>
+
 <div class="row" style="margin-bottom: 1rem;">
 	<span class="badge">Kind</span>
 	{#each assetKinds as kind (kind)}
@@ -127,23 +154,29 @@
 	{/if}
 </div>
 
-{#if data.assets.length === 0}
+{#if visibleAssets.length === 0}
 	<div class="panel muted">
-		No assets{data.activeTags.length > 0 || data.activeKind ? ' match the filter' : ' yet'}. The
-		seed import (maintainer CSV) or “+ New asset” fills this grid.
+		No assets{data.activeTags.length > 0 || data.activeKind || data.activeStatus
+			? ' match the filter'
+			: ' yet'}. “+ New asset” or <code>pnpm import:library</code> (docs/import-format.md) fills
+		this grid.
 		<button class="chip" style="margin-left: 0.5rem;" onclick={() => void invalidateAll()}
 			>refresh</button
 		>
 	</div>
 {:else}
 	<div class="grid">
-		{#each data.assets as asset (asset.id)}
+		{#each visibleAssets as asset (asset.id)}
 			<a class="card" href={resolve('/library/assets/[id]', { id: asset.id })}>
 				<AssetThumb {asset} />
 				<div class="title">{asset.title}</div>
 				<div class="row" style="justify-content: space-between;">
 					<span class="badge">{asset.kind}</span>
-					{#if asset.source}<span class="muted">{asset.source}</span>{/if}
+					{#if asset.production_status !== 'ready'}
+						<span class="badge status-{asset.production_status}"
+							>{asset.production_status.replace('_', ' ')}</span
+						>
+					{:else if asset.source}<span class="muted">{asset.source}</span>{/if}
 				</div>
 				{#if asset.tags.length > 0}
 					<div class="chips" style="margin-top: 0.45rem;">

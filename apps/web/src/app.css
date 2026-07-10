@@ -175,6 +175,12 @@ a.card:hover {
 	color: var(--warn);
 }
 
+.badge.status-planned,
+.badge.status-in_progress {
+	color: var(--accent);
+	font-weight: 700;
+}
+
 .panel {
 	background: var(--surface);
 	border: 1px solid var(--line);

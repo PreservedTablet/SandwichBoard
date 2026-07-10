@@ -10,6 +10,7 @@
 	let primaryTextId = $state('');
 	let ctaId = $state('');
 	let angle = $state('');
+	let landingPath = $state('');
 	let notes = $state('');
 	let error = $state('');
 	let saving = $state(false);
@@ -36,6 +37,7 @@
 				...(primaryTextId ? { primary_text_id: primaryTextId } : {}),
 				...(ctaId ? { cta_id: ctaId } : {}),
 				...((angle || suggestedAngle).trim() ? { angle: (angle || suggestedAngle).trim() } : {}),
+				...(landingPath.trim() ? { landing_path: landingPath.trim() } : {}),
 				...(notes.trim() ? { notes: notes.trim() } : {})
 			});
 			void goto(resolve('/combos/[id]', { id: created.id }));
@@ -95,6 +97,10 @@
 			<label class="field">
 				Angle
 				<input bind:value={angle} placeholder={suggestedAngle || 'save-money'} />
+			</label>
+			<label class="field">
+				Landing path
+				<input bind:value={landingPath} placeholder="/compare or https://…" />
 			</label>
 			<label class="field" style="flex: 1;">
 				Notes

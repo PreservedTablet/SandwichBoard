@@ -49,6 +49,12 @@
 	let medium = $state<'paid' | 'organic'>('paid');
 	let baseUrl = $state('');
 	const campaignSlug = $derived(slugifyCampaign(campaignInput));
+	$effect(() => {
+		// A full-URL landing path pre-fills the tagged-link destination.
+		if (creative.landing_path?.startsWith('http') && !baseUrl) {
+			baseUrl = creative.landing_path;
+		}
+	});
 
 	let result = $state<AdNameResponse | null>(null);
 	let nameError = $state('');
@@ -152,6 +158,7 @@
 				</td>
 			</tr>
 			<tr><th>Angle</th><td>{creative.angle ?? '—'}</td></tr>
+			<tr><th>Landing path</th><td class="mono">{creative.landing_path ?? '—'}</td></tr>
 			<tr><th>Notes</th><td>{creative.notes ?? '—'}</td></tr>
 		</tbody>
 	</table>

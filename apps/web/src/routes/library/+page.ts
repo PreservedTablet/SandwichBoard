@@ -12,6 +12,9 @@ export const load: PageLoad = async ({ fetch, url }) => {
 	return {
 		assets: items,
 		activeKind: kind,
-		activeTags: url.searchParams.getAll('tag')
+		activeTags: url.searchParams.getAll('tag'),
+		// Production-status filtering happens client-side so the chip counts
+		// always reflect the whole (kind/tag-filtered) set.
+		activeStatus: url.searchParams.get('status')
 	};
 };
