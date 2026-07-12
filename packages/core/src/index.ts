@@ -1,12 +1,26 @@
 export {
 	ConfigError,
 	childProcessEnv,
+	configReadiness,
 	loadConfig,
 	redactedConfigSummary,
 	storageDrivers,
 	type AppConfig,
+	type FeatureReadiness,
+	type FeatureStatus,
 	type StorageDriver
 } from './config.js';
+export {
+	GOOGLE_PLATFORM,
+	mapGoogleCsvHeader,
+	microsToCents,
+	normalizeCustomerId,
+	normalizeGoogleCsvRecord,
+	type GoogleCsvColumn,
+	type GoogleCsvHeaderMap,
+	type GoogleCsvHeaderResult,
+	type GoogleCsvRow
+} from './google.js';
 export type { StorageAdapter, StorageObjectStat } from './storage.js';
 export {
 	AD_NAME_DELIMITER,

@@ -123,6 +123,105 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 	return parsed.data;
 }
 
+export type FeatureStatus = 'ready' | 'incomplete' | 'not_configured';
+
+export interface FeatureReadiness {
+	feature: string;
+	status: FeatureStatus;
+	/** Variable names only — values are never surfaced. */
+	missing: string[];
+	note?: string;
+}
+
+/**
+ * Per-feature readiness of an injected environment against the manifest
+ * (config/variables.md) — the clone-and-go diagnostic behind
+ * `pnpm config:check`. Optional features report `not_configured` (a valid
+ * state, not an error); a feature with some-but-not-all of its variables
+ * reports `incomplete` with the missing names.
+ */
+export function configReadiness(env: NodeJS.ProcessEnv = process.env): FeatureReadiness[] {
+	const has = (name: string): boolean => Boolean(env[name] && env[name]!.length > 0);
+	const group = (feature: string, vars: string[], note?: string): FeatureReadiness => {
+		const missing = vars.filter((name) => !has(name));
+		const status: FeatureStatus =
+			missing.length === 0
+				? 'ready'
+				: missing.length === vars.length
+					? 'not_configured'
+					: 'incomplete';
+		return { feature, status, missing, note };
+	};
+
+	const features: FeatureReadiness[] = [];
+
+	features.push(
+		has('DATABASE_URL')
+			? { feature: 'core api + database', status: 'ready', missing: [] }
+			: {
+					feature: 'core api + database',
+					status: 'incomplete',
+					missing: ['DATABASE_URL'],
+					note: 'required — nothing runs without it'
+				}
+	);
+
+	const driver = env.STORAGE_DRIVER ?? 'local-fs';
+	if (driver === 'local-fs') {
+		features.push({
+			feature: 'storage (local-fs)',
+			status: 'ready',
+			missing: [],
+			note: `path: ${env.STORAGE_LOCAL_PATH ?? 'data/storage (default)'}`
+		});
+	} else if (driver === 's3') {
+		features.push(
+			group('storage (s3)', ['S3_ENDPOINT', 'S3_BUCKET', 'S3_ACCESS_KEY', 'S3_SECRET_KEY'])
+		);
+	} else if (driver === 'supabase-storage') {
+		features.push(group('storage (supabase)', ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']));
+	} else {
+		features.push({
+			feature: 'storage',
+			status: 'incomplete',
+			missing: ['STORAGE_DRIVER'],
+			note: `unknown driver ${JSON.stringify(driver)} — one of ${storageDrivers.join(', ')}`
+		});
+	}
+
+	features.push(
+		group(
+			'internal commands (dashboard "Sync now", CSV upload)',
+			['INTERNAL_API_TOKEN'],
+			'optional — unset means POST /internal/* answers 503; pnpm sync works regardless'
+		)
+	);
+	features.push(
+		group(
+			'meta ingestion (Phase 2)',
+			['META_SYSTEM_USER_TOKEN', 'META_AD_ACCOUNT_ID'],
+			'system-user token, ads_read only — docs/decisions/0005'
+		)
+	);
+	features.push(
+		group(
+			'google ingestion, live GAQL (Phase 2, pending token approval)',
+			[
+				'GOOGLE_ADS_DEVELOPER_TOKEN',
+				'GOOGLE_PROJECT_ID',
+				'GOOGLE_ADS_MCP_OAUTH_CLIENT_ID',
+				'GOOGLE_ADS_MCP_OAUTH_CLIENT_SECRET'
+			],
+			'the CSV upload path works with no credentials at all'
+		)
+	);
+	features.push(group('analysis role (Phase 3)', ['ANALYST_DATABASE_URL']));
+	features.push(group('capture endpoints (Phase 4)', ['INBOUND_CAPTURE_SECRET']));
+	features.push(group('postiz publishing (Phase 5)', ['POSTIZ_BASE_URL', 'POSTIZ_API_KEY']));
+
+	return features;
+}
+
 /**
  * OS plumbing (not configuration) for spawning pinned external CLIs: the
  * child gets PATH/HOME so its interpreter resolves, plus exactly the
