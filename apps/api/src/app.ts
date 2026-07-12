@@ -1,17 +1,25 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { StorageAdapter } from '@sandwichboard/core';
 import type { OrgDb } from './db/pool.js';
+import type { MetaSyncSummary } from './ingest/meta-sync.js';
 import { registerErrorHandling } from './lib/errors.js';
 import { FileTokenSigner } from './lib/file-tokens.js';
 import { registerAssetRoutes } from './routes/assets.js';
 import { registerCopyVariantRoutes } from './routes/copy-variants.js';
 import { registerCreativeRoutes } from './routes/creatives.js';
+import { registerInternalRoutes } from './routes/internal.js';
+import { registerMetricsRoutes } from './routes/metrics.js';
+import { registerRecommendationRoutes } from './routes/recommendations.js';
 import { registerSettingsRoutes } from './routes/settings.js';
 import type { RouteDeps } from './routes/shared.js';
 
 export interface AppDeps {
 	db: OrgDb;
 	storage: StorageAdapter;
+	/** Guards POST /internal/*; unset ⇒ those endpoints answer 503. */
+	internalToken?: string;
+	/** Present when Meta ingestion is configured (docs/decisions/0005). */
+	runMetaSync?: () => Promise<MetaSyncSummary>;
 }
 
 export interface BuildAppOptions {
@@ -55,6 +63,13 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
 		registerAssetRoutes(app, deps);
 		registerCopyVariantRoutes(app, deps);
 		registerCreativeRoutes(app, deps);
+		registerMetricsRoutes(app, deps);
+		registerRecommendationRoutes(app, deps);
+		registerInternalRoutes(app, {
+			...deps,
+			internalToken: opts.deps.internalToken,
+			runMetaSync: opts.deps.runMetaSync
+		});
 	}
 
 	return app;

@@ -1,19 +1,46 @@
-import { SETTINGS_KEY_NAMING_PREFIX, isValidPrefix } from '@sandwichboard/core';
+import {
+	SETTINGS_KEY_GATE_MIN_IMPRESSIONS,
+	SETTINGS_KEY_GATE_MIN_SPEND_CENTS,
+	SETTINGS_KEY_META_CONVERSION_ACTION_TYPES,
+	SETTINGS_KEY_NAMING_PREFIX,
+	isValidPrefix
+} from '@sandwichboard/core';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { RouteDeps } from './shared.js';
 
 /**
  * Org settings live as data in the `settings` table (docs/plan/03): the
- * naming prefix, later the evidence-gate thresholds. Writable keys are
- * whitelisted with per-key validation — this is configuration-as-data, not
- * a generic KV store.
+ * naming prefix, the evidence-gate thresholds, the Meta conversion mapping.
+ * Writable keys are whitelisted with per-key validation — this is
+ * configuration-as-data, not a generic KV store.
  */
+
+const gateThreshold = z.number().int().min(0).max(1_000_000_000);
+const actionTypes = z.array(z.string().trim().min(1).max(200)).max(50);
+
 const WRITABLE_KEYS: Record<string, (value: unknown) => string | null> = {
 	[SETTINGS_KEY_NAMING_PREFIX]: (value) =>
 		typeof value === 'string' && isValidPrefix(value)
 			? null
-			: 'must be 1-16 lowercase alphanumeric/hyphen characters, e.g. "fwt"'
+			: 'must be 1-16 lowercase alphanumeric/hyphen characters, e.g. "fwt"',
+	// Evidence gate (docs/plan/01): tunable thresholds, never magic numbers.
+	// The leaderboard view falls back to 2500 / 1000 when these are unset.
+	[SETTINGS_KEY_GATE_MIN_SPEND_CENTS]: (value) =>
+		gateThreshold.safeParse(value).success
+			? null
+			: 'must be a non-negative integer number of cents, e.g. 2500',
+	[SETTINGS_KEY_GATE_MIN_IMPRESSIONS]: (value) =>
+		gateThreshold.safeParse(value).success
+			? null
+			: 'must be a non-negative integer impression count, e.g. 1000',
+	// Which Meta Insights action_types count as a conversion — depends on
+	// the operator's Pixel setup (docs/decisions/0005). Unset ⇒ conversions
+	// ingest as 0 while metric_snapshots.raw keeps every action.
+	[SETTINGS_KEY_META_CONVERSION_ACTION_TYPES]: (value) =>
+		actionTypes.safeParse(value).success
+			? null
+			: 'must be an array of action_type strings, e.g. ["offsite_conversion.fb_pixel_lead"]'
 };
 
 const putBodySchema = z.object({ value: z.unknown() });

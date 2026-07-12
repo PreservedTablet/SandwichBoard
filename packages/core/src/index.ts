@@ -1,11 +1,37 @@
 export {
 	ConfigError,
+	childProcessEnv,
+	configReadiness,
 	loadConfig,
 	redactedConfigSummary,
 	storageDrivers,
 	type AppConfig,
+	type FeatureReadiness,
+	type FeatureStatus,
 	type StorageDriver
 } from './config.js';
+export {
+	RECOMMENDATION_TRANSITIONS,
+	recommendationKinds,
+	recommendationRowSchema,
+	recommendationStatuses,
+	recommendationUpdateSchema,
+	type RecommendationKind,
+	type RecommendationRow,
+	type RecommendationStatus,
+	type RecommendationUpdate
+} from './recommendations.js';
+export {
+	GOOGLE_PLATFORM,
+	mapGoogleCsvHeader,
+	microsToCents,
+	normalizeCustomerId,
+	normalizeGoogleCsvRecord,
+	type GoogleCsvColumn,
+	type GoogleCsvHeaderMap,
+	type GoogleCsvHeaderResult,
+	type GoogleCsvRow
+} from './google.js';
 export type { StorageAdapter, StorageObjectStat } from './storage.js';
 export {
 	AD_NAME_DELIMITER,
@@ -32,6 +58,33 @@ export {
 	type UtmMedium,
 	type UtmParams
 } from './utm.js';
+export {
+	EVIDENCE_GATE_DEFAULTS,
+	INGEST_BACKFILL_DAYS,
+	MetricParseError,
+	SETTINGS_KEY_GATE_MIN_IMPRESSIONS,
+	SETTINGS_KEY_GATE_MIN_SPEND_CENTS,
+	SETTINGS_KEY_META_CONVERSION_ACTION_TYPES,
+	parseCount,
+	parseMoneyToCents
+} from './metrics.js';
+export {
+	META_PLATFORM,
+	metaAdAccountSchema,
+	metaActionSchema,
+	metaAdSchema,
+	metaCampaignSchema,
+	metaInsightsResponseSchema,
+	metaInsightsRowSchema,
+	normalizeMetaInsightsRow,
+	type MetaAction,
+	type MetaAd,
+	type MetaAdAccount,
+	type MetaCampaign,
+	type MetaInsightsResponse,
+	type MetaInsightsRow,
+	type NormalizedDailyMetrics
+} from './meta.js';
 export {
 	assetCreateSchema,
 	assetKinds,

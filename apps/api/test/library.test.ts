@@ -324,7 +324,7 @@ describe.skipIf(!TEST_DATABASE_URL)('creative library API (integration)', () => 
 		});
 
 		it('409s with guidance when the naming prefix is unset', async () => {
-			await db.query('delete from settings where key = $1', ['naming_prefix']);
+			await db.query('delete from settings where org_id = $1 and key = $2', [ORG, 'naming_prefix']);
 			const res = await app.inject({
 				method: 'GET',
 				url: `/api/creatives/${creativeId}/ad-name?campaign_slug=denver-circle`
@@ -348,8 +348,13 @@ describe.skipIf(!TEST_DATABASE_URL)('creative library API (integration)', () => 
 	});
 
 	describe('v_unmatched_ads (acceptance)', () => {
-		it('exists and is empty', async () => {
-			const res = await db.query('select count(*)::int as n from v_unmatched_ads');
+		it('exists and is empty for an org with no platform ads', async () => {
+			// Phase 2 filled the view with real ad_entities (other suites write
+			// their own orgs' rows in parallel) — this org has connected nothing.
+			const res = await db.query(
+				'select count(*)::int as n from v_unmatched_ads where org_id = $1',
+				[ORG]
+			);
 			expect(res.rows[0]).toEqual({ n: 0 });
 		});
 	});

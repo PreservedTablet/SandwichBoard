@@ -50,9 +50,16 @@ const configSchema = z
 		SUPABASE_URL: optionalSecret,
 		SUPABASE_SERVICE_ROLE_KEY: optionalSecret,
 
-		// Ingestion (Phase 2)
+		// Guards POST /internal/* (the dashboard's "Sync now" and future
+		// internal commands). Unset ⇒ those endpoints answer 503, loudly.
+		INTERNAL_API_TOKEN: optionalSecret,
+
+		// Ingestion (Phase 2). The Meta sync shells out to Meta's official
+		// Ads CLI (`meta`, PyPI package meta-ads — docs/decisions/0005);
+		// META_ADS_CLI_BIN overrides where to find it.
 		META_SYSTEM_USER_TOKEN: optionalSecret,
 		META_AD_ACCOUNT_ID: optionalSecret,
+		META_ADS_CLI_BIN: z.string().min(1).default('meta'),
 		GOOGLE_ADS_DEVELOPER_TOKEN: optionalSecret,
 		GOOGLE_PROJECT_ID: optionalSecret,
 		GOOGLE_ADS_MCP_OAUTH_CLIENT_ID: optionalSecret,
@@ -116,6 +123,120 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 	return parsed.data;
 }
 
+export type FeatureStatus = 'ready' | 'incomplete' | 'not_configured';
+
+export interface FeatureReadiness {
+	feature: string;
+	status: FeatureStatus;
+	/** Variable names only — values are never surfaced. */
+	missing: string[];
+	note?: string;
+}
+
+/**
+ * Per-feature readiness of an injected environment against the manifest
+ * (config/variables.md) — the clone-and-go diagnostic behind
+ * `pnpm config:check`. Optional features report `not_configured` (a valid
+ * state, not an error); a feature with some-but-not-all of its variables
+ * reports `incomplete` with the missing names.
+ */
+export function configReadiness(env: NodeJS.ProcessEnv = process.env): FeatureReadiness[] {
+	const has = (name: string): boolean => Boolean(env[name] && env[name]!.length > 0);
+	const group = (feature: string, vars: string[], note?: string): FeatureReadiness => {
+		const missing = vars.filter((name) => !has(name));
+		const status: FeatureStatus =
+			missing.length === 0
+				? 'ready'
+				: missing.length === vars.length
+					? 'not_configured'
+					: 'incomplete';
+		return { feature, status, missing, note };
+	};
+
+	const features: FeatureReadiness[] = [];
+
+	features.push(
+		has('DATABASE_URL')
+			? { feature: 'core api + database', status: 'ready', missing: [] }
+			: {
+					feature: 'core api + database',
+					status: 'incomplete',
+					missing: ['DATABASE_URL'],
+					note: 'required — nothing runs without it'
+				}
+	);
+
+	const driver = env.STORAGE_DRIVER ?? 'local-fs';
+	if (driver === 'local-fs') {
+		features.push({
+			feature: 'storage (local-fs)',
+			status: 'ready',
+			missing: [],
+			note: `path: ${env.STORAGE_LOCAL_PATH ?? 'data/storage (default)'}`
+		});
+	} else if (driver === 's3') {
+		features.push(
+			group('storage (s3)', ['S3_ENDPOINT', 'S3_BUCKET', 'S3_ACCESS_KEY', 'S3_SECRET_KEY'])
+		);
+	} else if (driver === 'supabase-storage') {
+		features.push(group('storage (supabase)', ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']));
+	} else {
+		features.push({
+			feature: 'storage',
+			status: 'incomplete',
+			missing: ['STORAGE_DRIVER'],
+			note: `unknown driver ${JSON.stringify(driver)} — one of ${storageDrivers.join(', ')}`
+		});
+	}
+
+	features.push(
+		group(
+			'internal commands (dashboard "Sync now", CSV upload)',
+			['INTERNAL_API_TOKEN'],
+			'optional — unset means POST /internal/* answers 503; pnpm sync works regardless'
+		)
+	);
+	features.push(
+		group(
+			'meta ingestion (Phase 2)',
+			['META_SYSTEM_USER_TOKEN', 'META_AD_ACCOUNT_ID'],
+			'system-user token, ads_read only — docs/decisions/0005'
+		)
+	);
+	features.push(
+		group(
+			'google ingestion, live GAQL (Phase 2, pending token approval)',
+			[
+				'GOOGLE_ADS_DEVELOPER_TOKEN',
+				'GOOGLE_PROJECT_ID',
+				'GOOGLE_ADS_MCP_OAUTH_CLIENT_ID',
+				'GOOGLE_ADS_MCP_OAUTH_CLIENT_SECRET'
+			],
+			'the CSV upload path works with no credentials at all'
+		)
+	);
+	features.push(group('analysis role (Phase 3)', ['ANALYST_DATABASE_URL']));
+	features.push(group('capture endpoints (Phase 4)', ['INBOUND_CAPTURE_SECRET']));
+	features.push(group('postiz publishing (Phase 5)', ['POSTIZ_BASE_URL', 'POSTIZ_API_KEY']));
+
+	return features;
+}
+
+/**
+ * OS plumbing (not configuration) for spawning pinned external CLIs: the
+ * child gets PATH/HOME so its interpreter resolves, plus exactly the
+ * credentials the caller passes — never the parent's full environment.
+ * Lives here because this module is the single reader of `process.env`
+ * (CLAUDE.md hard rule); these two names are deliberately not part of the
+ * variable manifest.
+ */
+export function childProcessEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+	const passthrough: Record<string, string> = {};
+	if (env.PATH) passthrough.PATH = env.PATH;
+	if (env.HOME) passthrough.HOME = env.HOME;
+	return passthrough;
+}
+
 function hostOf(connectionString: string): string {
 	try {
 		return new URL(connectionString).hostname || 'unknown';
@@ -135,6 +256,9 @@ export function redactedConfigSummary(cfg: AppConfig): Record<string, string> {
 		ORG_ID: cfg.ORG_ID,
 		DATABASE_URL: `set (host: ${hostOf(cfg.DATABASE_URL)})`,
 		ANALYST_DATABASE_URL: cfg.ANALYST_DATABASE_URL ? 'set' : 'not set',
+		INTERNAL_API_TOKEN: cfg.INTERNAL_API_TOKEN ? 'set' : 'not set',
+		META_SYSTEM_USER_TOKEN: cfg.META_SYSTEM_USER_TOKEN ? 'set' : 'not set',
+		META_AD_ACCOUNT_ID: cfg.META_AD_ACCOUNT_ID ? 'set' : 'not set',
 		STORAGE_DRIVER: cfg.STORAGE_DRIVER,
 		POSTIZ_BASE_URL: cfg.POSTIZ_BASE_URL ?? 'not set',
 		POSTIZ_API_KEY: cfg.POSTIZ_API_KEY ? 'set' : 'not set',
