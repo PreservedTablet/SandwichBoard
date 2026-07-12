@@ -22,6 +22,7 @@
 		"sync:local": "dotenv -e .env -- pnpm sync",
 		"config:check": "pnpm --filter @sandwichboard/api config:check",
 		"config:check:local": "dotenv -e .env -- pnpm config:check",
+		"analyze:open": "pnpm --filter @sandwichboard/api analyze:open",
 		"prepare": "husky"
 	},
 	"lint-staged": {

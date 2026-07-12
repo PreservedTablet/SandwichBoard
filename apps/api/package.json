@@ -12,6 +12,7 @@
 		"import:library": "tsx src/cli/import-library.ts",
 		"sync": "tsx src/cli/sync.ts",
 		"config:check": "tsx src/cli/config-check.ts",
+		"analyze:open": "tsx src/cli/analyze-open.ts",
 		"clean": "rm -rf dist *.tsbuildinfo"
 	},
 	"dependencies": {

@@ -11,6 +11,17 @@ export {
 	type StorageDriver
 } from './config.js';
 export {
+	RECOMMENDATION_TRANSITIONS,
+	recommendationKinds,
+	recommendationRowSchema,
+	recommendationStatuses,
+	recommendationUpdateSchema,
+	type RecommendationKind,
+	type RecommendationRow,
+	type RecommendationStatus,
+	type RecommendationUpdate
+} from './recommendations.js';
+export {
 	GOOGLE_PLATFORM,
 	mapGoogleCsvHeader,
 	microsToCents,
