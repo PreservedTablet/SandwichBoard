@@ -14,6 +14,9 @@ build/
 # Local storage adapter root (operator data, never committed)
 data/
 
+# /analyze output — real spend data, operator-local by design (Phase 3)
+reports/
+
 # Test & tooling output
 coverage/
 

@@ -186,22 +186,73 @@ seam. Nothing about the CSV path changes when it does.
 ## 4. Claude Code session profiles
 
 Two MCP profiles ship with the repo (docs/plan/05 T1 — session separation is
-a hard rule):
+a hard rule). Database access in AI sessions is **plain `psql` over
+`ANALYST_DATABASE_URL`** — no third-party database MCP: the reference
+Postgres MCP server was archived after a read-only-bypass SQL-injection
+disclosure, and the analyst role is the real fence anyway
+(docs/decisions/0007).
 
-| Profile           | Use for                             | Has                                            | Never has               |
-| ----------------- | ----------------------------------- | ---------------------------------------------- | ----------------------- |
-| `mcp-draft.json`  | `/analyze`, `/draft`, scout content | Postgres as read-only `analyst` role (Phase 3) | Any ad-platform MCP     |
-| `mcp-manage.json` | Interactive campaign management     | Meta Ads MCP + read-only database              | Scout/untrusted content |
+| Profile           | Use for                             | Has                          | Never has               |
+| ----------------- | ----------------------------------- | ---------------------------- | ----------------------- |
+| `mcp-draft.json`  | `/analyze`, `/draft`, scout content | Nothing — deliberately empty | Any ad-platform MCP     |
+| `mcp-manage.json` | Interactive campaign management     | Official Meta Ads MCP        | Scout/untrusted content |
+
+Always pass `--strict-mcp-config` so ONLY the named profile loads —
+without it, user-scope MCP servers (possibly ad-platform ones) would leak
+into draft sessions:
 
 ```sh
-claude --mcp-config mcp-draft.json    # drafting / analysis sessions
-claude --mcp-config mcp-manage.json   # campaign management sessions
+claude --mcp-config mcp-draft.json --strict-mcp-config    # drafting / analysis
+claude --mcp-config mcp-manage.json --strict-mcp-config   # campaign management
 ```
 
-The `analyst` database role (created in Phase 3) is enforced at the
-database, not by prompt. When connecting the Meta MCP, choose **"opt in for
-current business only"** during OAuth — least privilege is the single most
-important click in the whole setup (docs/plan/04).
+The `analyst` database role is enforced at the database, not by prompt.
+When connecting the Meta MCP, choose **"opt in for current business only"**
+during OAuth — least privilege is the single most important click in the
+whole setup (docs/plan/04).
+
+## 4.5 The analysis loop (Phase 3)
+
+The `analyst` role (created by migration 0005) can read everything and
+insert only into `recommendations` and `audit_log` — even a fully hijacked
+analysis session cannot spend, publish, or alter the library. One-time
+wiring:
+
+1. Create a **login user** for it and set its password yourself (the repo
+   ships no credentials, so the NOLOGIN `analyst` role only carries the
+   grants):
+
+   ```sql
+   create role my_analyst login password '<generate one>';
+   grant analyst to my_analyst;
+   ```
+
+2. Set `ANALYST_DATABASE_URL` (Infisical `/analysis`) to connect as that
+   user, **carrying the org context for row-level security** in the
+   connection options (`ORG_ID` default is the nil UUID):
+
+   ```
+   postgres://my_analyst:…@host:5432/sandwichboard?options=-c%20app.org_id%3D00000000-0000-0000-0000-000000000000
+   ```
+
+   Without `app.org_id`, RLS returns zero rows — a safe failure mode; the
+   prompt template includes the `set_config` fallback.
+
+3. Run the ritual (Monday morning by design, any cadence in practice):
+
+   ```sh
+   infisical run --env=prod --path=/analysis -- \
+     claude --mcp-config mcp-draft.json --strict-mcp-config
+   # then, inside the session:
+   /analyze
+   ```
+
+   The contract lives in `prompts/analyze.md` (prompts are code — they
+   change via PRs). Output: `reports/YYYY-MM-DD.md` (gitignored — real
+   spend data stays local) plus `recommendations` rows whose evidence
+   embeds the SQL that re-computes every cited number. Review with
+   `pnpm analyze:open`; record verdicts on the dashboard's
+   **Recs** page — they feed the next run.
 
 ## 5. Scheduling — yours, optional, never shipped
 
