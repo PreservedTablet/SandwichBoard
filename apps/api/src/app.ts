@@ -8,6 +8,7 @@ import { registerAssetRoutes } from './routes/assets.js';
 import { registerCopyVariantRoutes } from './routes/copy-variants.js';
 import { registerCreativeRoutes } from './routes/creatives.js';
 import { registerInternalRoutes } from './routes/internal.js';
+import { registerMetricsRoutes } from './routes/metrics.js';
 import { registerSettingsRoutes } from './routes/settings.js';
 import type { RouteDeps } from './routes/shared.js';
 
@@ -61,6 +62,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
 		registerAssetRoutes(app, deps);
 		registerCopyVariantRoutes(app, deps);
 		registerCreativeRoutes(app, deps);
+		registerMetricsRoutes(app, deps);
 		registerInternalRoutes(app, {
 			...deps,
 			internalToken: opts.deps.internalToken,

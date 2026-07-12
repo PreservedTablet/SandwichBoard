@@ -1,7 +1,10 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { META_PLATFORM } from '@sandwichboard/core';
+import type { Readable } from 'node:stream';
+import { GOOGLE_PLATFORM, META_PLATFORM } from '@sandwichboard/core';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import { MetaCliError } from '../connectors/meta-cli.js';
+import { GoogleCsvValidationError, ingestGoogleCsv } from '../ingest/google-csv.js';
 import {
 	IngestConfigError,
 	SyncAlreadyRunningError,
@@ -22,6 +25,38 @@ export interface IngestRouteDeps extends RouteDeps {
 	internalToken?: string;
 	/** Wired when Meta ingestion is configured; undefined ⇒ 503 on trigger. */
 	runMetaSync?: () => Promise<MetaSyncSummary>;
+}
+
+const googleCsvQuerySchema = z.object({
+	external_account_id: z.string().trim().min(1).max(32),
+	label: z.string().trim().min(1).max(200).optional(),
+	filename: z.string().trim().min(1).max(300).optional()
+});
+
+const MAX_CSV_BYTES = 20 * 1024 * 1024;
+
+async function readRawBody(request: FastifyRequest, maxBytes: number): Promise<string> {
+	const body = request.body as Readable | undefined;
+	if (!body || typeof (body as Readable).on !== 'function') {
+		// JSON content types are parsed before they get here; a CSV upload
+		// must arrive as a raw text/csv (or octet-stream) body.
+		throw new GoogleCsvValidationError([
+			'send the CSV file as the raw request body with content-type text/csv'
+		]);
+	}
+	const chunks: Buffer[] = [];
+	let total = 0;
+	for await (const chunk of body) {
+		const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string);
+		total += buf.length;
+		if (total > maxBytes) {
+			throw new GoogleCsvValidationError([
+				`file exceeds ${Math.floor(maxBytes / 1024 / 1024)} MB — split the export by date range`
+			]);
+		}
+		chunks.push(buf);
+	}
+	return Buffer.concat(chunks).toString('utf8');
 }
 
 function bearerToken(request: FastifyRequest): string | undefined {
@@ -94,61 +129,115 @@ export function registerInternalRoutes(app: FastifyInstance, deps: IngestRouteDe
 		}
 	});
 
-	// Read-only facts for the dashboard: last run per platform (from
-	// audit_log — the run's own record), freshest snapshot date, and the
-	// open-problem counts. Staleness is computed client-side from these.
-	app.get('/api/sync/status', async () => {
-		const [lastSuccess, lastFailure, dataThrough, unmatched, openDeadletters] = await db.tx(
-			async (client) => {
-				const success = await client.query<{ at: string; payload: MetaSyncSummary }>(
-					`select at, payload from audit_log
-					 where org_id = $1 and action = 'meta_sync_completed'
-					 order by at desc limit 1`,
-					[db.orgId]
-				);
-				const failure = await client.query<{ at: string; payload: { error?: string } }>(
-					`select at, payload from audit_log
-					 where org_id = $1 and action = 'meta_sync_failed'
-					 order by at desc limit 1`,
-					[db.orgId]
-				);
-				const through = await client.query<{ data_through: string | null }>(
-					`select to_char(max(date), 'YYYY-MM-DD') as data_through
-					 from metric_snapshots where org_id = $1`,
-					[db.orgId]
-				);
-				const unmatchedCount = await client.query<{ n: number }>(
-					'select count(*)::int as n from v_unmatched_ads where org_id = $1',
-					[db.orgId]
-				);
-				const openCount = await client.query<{ n: number }>(
-					'select count(*)::int as n from ingest_deadletter where org_id = $1 and not resolved',
-					[db.orgId]
-				);
-				return [
-					success.rows[0] ?? null,
-					failure.rows[0] ?? null,
-					through.rows[0]?.data_through ?? null,
-					unmatchedCount.rows[0]!.n,
-					openCount.rows[0]!.n
-				] as const;
-			}
-		);
+	// Google CSV upload — the tokenless universal fallback/backfill
+	// (docs/plan/06 Session 2b): raw text/csv body, account id in the query.
+	app.post('/internal/ingest/google-csv', async (request, reply) => {
+		const denied = requireInternalToken(request, reply);
+		if (denied) return denied;
 
-		return {
-			data_through: dataThrough,
-			unmatched_ads: unmatched,
-			open_deadletters: openDeadletters,
-			platforms: [
+		const query = googleCsvQuerySchema.parse(request.query);
+		try {
+			const csvText = await readRawBody(request, MAX_CSV_BYTES);
+			return await ingestGoogleCsv(
+				{ db, actor: deps.actor, trigger: 'api' },
 				{
-					platform: META_PLATFORM,
-					configured: Boolean(deps.runMetaSync),
-					last_success_at: lastSuccess?.at ?? null,
-					last_success_summary: lastSuccess?.payload ?? null,
-					last_failure_at: lastFailure?.at ?? null,
-					last_failure_error: lastFailure?.payload?.error ?? null
+					csvText,
+					externalAccountId: query.external_account_id,
+					accountLabel: query.label,
+					filename: query.filename
 				}
-			]
-		};
+			);
+		} catch (err) {
+			if (err instanceof GoogleCsvValidationError) {
+				return reply.status(400).send({ error: 'csv_invalid', problems: err.problems });
+			}
+			if (err instanceof IngestConfigError) {
+				return reply.status(409).send({ error: err.code, message: err.message });
+			}
+			if (err instanceof SyncAlreadyRunningError) {
+				return reply.status(409).send({ error: 'sync_already_running', message: err.message });
+			}
+			throw err;
+		}
+	});
+
+	// Read-only facts for the dashboard: last run per platform (from
+	// audit_log — the run's own record), freshest snapshot date per
+	// platform, and the open-problem counts. Staleness is computed
+	// client-side from these.
+	app.get('/api/sync/status', async () => {
+		return db.tx(async (client) => {
+			const lastAudit = async (action: string) => {
+				const { rows } = await client.query<{ at: string; payload: Record<string, unknown> }>(
+					`select at, payload from audit_log
+					 where org_id = $1 and action = $2
+					 order by at desc limit 1`,
+					[db.orgId, action]
+				);
+				return rows[0] ?? null;
+			};
+			const dataThrough = async (platform?: string) => {
+				const { rows } = await client.query<{ data_through: string | null }>(
+					platform
+						? `select to_char(max(s.date), 'YYYY-MM-DD') as data_through
+						   from metric_snapshots s join ad_entities e on e.id = s.ad_entity_id
+						   where s.org_id = $1 and e.platform = $2`
+						: `select to_char(max(date), 'YYYY-MM-DD') as data_through
+						   from metric_snapshots where org_id = $1`,
+					platform ? [db.orgId, platform] : [db.orgId]
+				);
+				return rows[0]?.data_through ?? null;
+			};
+
+			const [metaSuccess, metaFailure, googleSuccess] = await Promise.all([
+				lastAudit('meta_sync_completed'),
+				lastAudit('meta_sync_failed'),
+				lastAudit('google_csv_ingested')
+			]);
+			const [overallThrough, metaThrough, googleThrough] = await Promise.all([
+				dataThrough(),
+				dataThrough(META_PLATFORM),
+				dataThrough(GOOGLE_PLATFORM)
+			]);
+			const unmatched = await client.query<{ n: number }>(
+				'select count(*)::int as n from v_unmatched_ads where org_id = $1',
+				[db.orgId]
+			);
+			const openDeadletters = await client.query<{ n: number }>(
+				'select count(*)::int as n from ingest_deadletter where org_id = $1 and not resolved',
+				[db.orgId]
+			);
+
+			return {
+				data_through: overallThrough,
+				unmatched_ads: unmatched.rows[0]!.n,
+				open_deadletters: openDeadletters.rows[0]!.n,
+				platforms: [
+					{
+						platform: META_PLATFORM,
+						method: 'sync',
+						configured: Boolean(deps.runMetaSync),
+						data_through: metaThrough,
+						last_success_at: metaSuccess?.at ?? null,
+						last_success_summary: metaSuccess?.payload ?? null,
+						last_failure_at: metaFailure?.at ?? null,
+						last_failure_error: (metaFailure?.payload as { error?: string } | null)?.error ?? null
+					},
+					{
+						// CSV upload needs no platform credentials, so google is
+						// always available; the live GAQL path arrives with the
+						// developer token (docs/decisions/0006).
+						platform: GOOGLE_PLATFORM,
+						method: 'csv-upload',
+						configured: true,
+						data_through: googleThrough,
+						last_success_at: googleSuccess?.at ?? null,
+						last_success_summary: googleSuccess?.payload ?? null,
+						last_failure_at: null,
+						last_failure_error: null
+					}
+				]
+			};
+		});
 	});
 }
