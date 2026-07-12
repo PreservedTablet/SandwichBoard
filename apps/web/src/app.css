@@ -111,6 +111,11 @@ a {
 	align-items: center;
 }
 
+.sync-banner .issue-link {
+	color: var(--warn);
+	font-weight: 600;
+}
+
 h1 {
 	font-size: 1.35rem;
 	margin: 0 0 1rem;

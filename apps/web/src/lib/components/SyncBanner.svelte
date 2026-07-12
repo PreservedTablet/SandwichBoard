@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { api, ApiError, type SyncStatus } from '$lib/api';
+	import { clearInternalToken, getInternalToken, storeInternalToken } from '$lib/internal-token';
 
 	/**
 	 * The staleness banner (docs/plan/06 Phase 2): nothing runs unattended,
@@ -7,8 +9,6 @@
 	 * "Sync now" button. The button needs the operator's INTERNAL_API_TOKEN
 	 * once per browser session (kept in sessionStorage, never persisted).
 	 */
-
-	const TOKEN_STORAGE_KEY = 'sandwichboard.internal_api_token';
 
 	let status = $state<SyncStatus | null>(null);
 	let loadError = $state<string | null>(null);
@@ -41,7 +41,7 @@
 	}
 
 	async function syncNow(): Promise<void> {
-		const token = tokenInput.trim() || sessionStorage.getItem(TOKEN_STORAGE_KEY) || '';
+		const token = tokenInput.trim() || getInternalToken();
 		if (!token) {
 			needToken = true;
 			return;
@@ -50,7 +50,7 @@
 		syncError = null;
 		try {
 			const summary = await api.runMetaSync(token);
-			sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+			storeInternalToken(token);
 			needToken = false;
 			tokenInput = '';
 			lastRunLine =
@@ -61,7 +61,7 @@
 			await load();
 		} catch (err) {
 			if (err instanceof ApiError && err.status === 401) {
-				sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+				clearInternalToken();
 				needToken = true;
 				syncError = 'That token was rejected — paste the INTERNAL_API_TOKEN value.';
 			} else {
@@ -93,10 +93,14 @@
 				Metrics have never been synced
 			{/if}
 			{#if status.unmatched_ads > 0}
-				· {status.unmatched_ads} unmatched ad{status.unmatched_ads === 1 ? '' : 's'}
+				· <a href={resolve('/metrics')} class="issue-link"
+					>{status.unmatched_ads} unmatched ad{status.unmatched_ads === 1 ? '' : 's'}</a
+				>
 			{/if}
 			{#if status.open_deadletters > 0}
-				· {status.open_deadletters} deadletter{status.open_deadletters === 1 ? '' : 's'}
+				· <a href={resolve('/metrics')} class="issue-link"
+					>{status.open_deadletters} deadletter{status.open_deadletters === 1 ? '' : 's'}</a
+				>
 			{/if}
 		</span>
 

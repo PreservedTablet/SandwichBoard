@@ -10,7 +10,8 @@
 	const sections = [
 		{ href: resolve('/library'), label: 'Library' },
 		{ href: resolve('/library/copy'), label: 'Copy' },
-		{ href: resolve('/combos'), label: 'Combos' }
+		{ href: resolve('/combos'), label: 'Combos' },
+		{ href: resolve('/metrics'), label: 'Metrics' }
 	] as const;
 
 	function isActive(href: string): boolean {
