@@ -3,6 +3,8 @@ import type {
 	CopyVariantRow,
 	CreativeListItem,
 	AdNameParts,
+	RecommendationRow,
+	RecommendationStatus,
 	UtmParams
 } from '@sandwichboard/core';
 
@@ -174,6 +176,12 @@ export interface DeadletterRow {
 	resolved: boolean;
 }
 
+/** Recommendation row as served: + joined subject-combo summary. */
+export type RecommendationListItem = RecommendationRow & {
+	subject_short_code: string | null;
+	subject_creative_status: string | null;
+};
+
 export function createApi(fetchFn: Fetch = fetch) {
 	return {
 		listSettings: () => request<{ items: SettingRow[] }>(fetchFn, 'GET', '/api/settings'),
@@ -250,6 +258,17 @@ export function createApi(fetchFn: Fetch = fetch) {
 				`/api/metrics/deadletters/${id}`,
 				{ resolved }
 			),
+
+		listRecommendations: (status?: RecommendationStatus) =>
+			request<{ items: RecommendationListItem[] }>(
+				fetchFn,
+				'GET',
+				`/api/recommendations${status ? `?status=${status}` : ''}`
+			),
+		updateRecommendation: (
+			id: string,
+			patch: { status?: RecommendationStatus; outcome_note?: string | null }
+		) => request<RecommendationListItem>(fetchFn, 'PATCH', `/api/recommendations/${id}`, patch),
 
 		// /internal/* is a command surface guarded by a bearer token the
 		// operator pastes once per browser session (docs/decisions/0005).

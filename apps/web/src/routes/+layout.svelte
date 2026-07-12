@@ -11,7 +11,8 @@
 		{ href: resolve('/library'), label: 'Library' },
 		{ href: resolve('/library/copy'), label: 'Copy' },
 		{ href: resolve('/combos'), label: 'Combos' },
-		{ href: resolve('/metrics'), label: 'Metrics' }
+		{ href: resolve('/metrics'), label: 'Metrics' },
+		{ href: resolve('/recommendations'), label: 'Recs' }
 	] as const;
 
 	function isActive(href: string): boolean {

@@ -116,6 +116,28 @@ a {
 	font-weight: 600;
 }
 
+.rec-card .rec-kind {
+	font-weight: 700;
+	color: var(--accent);
+}
+
+.rec-card .rec-kind-pause {
+	color: var(--warn);
+}
+
+.rec-card .rec-kind-scale {
+	color: var(--ok);
+}
+
+.rec-card pre.evidence {
+	background: var(--chip);
+	border-radius: 7px;
+	padding: 0.6rem 0.8rem;
+	overflow-x: auto;
+	font-size: 0.8rem;
+	margin: 0.4rem 0 0;
+}
+
 h1 {
 	font-size: 1.35rem;
 	margin: 0 0 1rem;
