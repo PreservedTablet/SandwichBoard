@@ -57,6 +57,14 @@ fill in values, and use the `:local` scripts (`pnpm dev:local`,
 local development — and gitleaks treats `.env` files as radioactive either
 way.
 
+**Check your wiring at any time** — per-feature readiness against the
+manifest, variable names only (values are never printed); `--db` also
+verifies the database is reachable with all migrations applied:
+
+```sh
+infisical run --env=dev --path=/api -- pnpm config:check --db
+```
+
 ## 2. Database — any vanilla Postgres 15+
 
 The reference deployment is a **Postgres 16 container** beside Postiz on a
@@ -134,6 +142,46 @@ Ads CLI** — auth model, command contract, and the reasoning live in
    Every run writes an `audit_log` summary; rows the sync can't use land in
    `ingest_deadletter`, and ads whose names don't match the naming
    convention surface in `v_unmatched_ads`.
+
+## 3.7 Google metrics (Phase 2) — CSV upload, no token needed
+
+Google ingestion needs **no API access**: export an ad-level report
+segmented by day and upload it on the dashboard's **Metrics** page (or
+POST it — see below). Re-uploads and overlapping date ranges are
+idempotent; it doubles as historic backfill forever. Full decision record:
+[docs/decisions/0006](decisions/0006-google-ingestion-and-metrics-dashboard.md).
+
+**Columns.** Canonical headers are the GAQL field paths — this query's CSV
+export is exactly right:
+
+```
+SELECT ad_group_ad.ad.id, ad_group_ad.ad.name, segments.date,
+       metrics.cost_micros, metrics.impressions, metrics.clicks,
+       metrics.conversions, campaign.id, campaign.name
+FROM ad_group_ad WHERE segments.date BETWEEN '2026-06-01' AND '2026-07-11'
+```
+
+Required: ad id, date (YYYY-MM-DD), impressions, clicks, and one cost
+column (`metrics.cost_micros`, or a decimal `Cost`). The English UI export
+headers (`Ad ID`, `Day`, `Cost`, `Impr.`, `Clicks`, `Conversions`,
+`Campaign ID`, `Campaign`) are accepted as aliases; for anything else the
+upload is rejected listing every accepted name — rename the header row
+once and re-upload. Numbers must be unformatted (`1234`, not `"1,234"`);
+a bad file is rejected whole with `file:line` problems, nothing partial.
+
+Scripted upload (same endpoint the dashboard uses, bearer =
+`INTERNAL_API_TOKEN`):
+
+```sh
+curl -X POST -H "Authorization: Bearer $YOUR_INTERNAL_API_TOKEN" \
+  -H 'Content-Type: text/csv' --data-binary @report.csv \
+  'http://127.0.0.1:3000/internal/ingest/google-csv?external_account_id=123-456-7890&label=My%20Google'
+```
+
+**Live GAQL ingestion** (no CSV step) arrives once your Google Ads API
+developer token is approved (the pre-build queue item, docs/plan/00) — it
+will wire the official read-only Google Ads MCP behind the same connector
+seam. Nothing about the CSV path changes when it does.
 
 ## 4. Claude Code session profiles
 
