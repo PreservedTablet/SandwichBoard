@@ -253,6 +253,20 @@ describe.skipIf(!TEST_DATABASE_URL)(
 					{ external_ad_id: '777003', date: D2, spend_cents: 100 }
 				]);
 
+				// raw preserves the ORIGINAL export cells (0004 contract: any
+				// later conversion bug can be re-computed from the source),
+				// not the already-derived normalized row.
+				const raw = await db.query(
+					`select s.raw from metric_snapshots s join ad_entities e on e.id = s.ad_entity_id
+				 where s.org_id = $1 and e.external_ad_id = '777001' and s.date = $2`,
+					[ORG, D1]
+				);
+				expect(raw.rows[0]!.raw).toMatchObject({
+					'metrics.cost_micros': '12340000',
+					'metrics.impressions': '1500',
+					'segments.date': D1
+				});
+
 				const audit = await db.query(
 					`select payload from audit_log where org_id = $1 and action = 'google_csv_ingested'
 				 order by at desc limit 1`,

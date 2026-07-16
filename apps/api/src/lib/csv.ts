@@ -13,13 +13,25 @@ export class CsvError extends Error {
 	}
 }
 
-export function parseCsv(text: string): string[][] {
+interface CsvRow {
+	cells: string[];
+	/** Physical 1-based line the row STARTS on (quoted fields may span more). */
+	line: number;
+}
+
+function parseCsvRows(text: string): CsvRow[] {
 	const input = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
-	const rows: string[][] = [];
+	const rows: CsvRow[] = [];
 	let row: string[] = [];
 	let field = '';
 	let inQuotes = false;
 	let i = 0;
+	// Physical line under the cursor vs. where the in-progress row began —
+	// quoted fields may contain newlines, so "row index" and "file line"
+	// diverge and error messages must cite the latter (docs/import-format.md
+	// promises file:line problems).
+	let line = 1;
+	let rowStartLine = 1;
 
 	const endField = () => {
 		row.push(field);
@@ -27,7 +39,7 @@ export function parseCsv(text: string): string[][] {
 	};
 	const endRow = () => {
 		endField();
-		rows.push(row);
+		rows.push({ cells: row, line: rowStartLine });
 		row = [];
 	};
 
@@ -44,13 +56,14 @@ export function parseCsv(text: string): string[][] {
 				i += 1;
 				continue;
 			}
+			if (ch === '\n') line += 1;
 			field += ch;
 			i += 1;
 			continue;
 		}
 		if (ch === '"') {
 			if (field.length > 0) {
-				throw new CsvError(`unexpected quote inside unquoted field (row ${rows.length + 1})`);
+				throw new CsvError(`unexpected quote inside unquoted field (line ${rowStartLine})`);
 			}
 			inQuotes = true;
 			i += 1;
@@ -64,11 +77,15 @@ export function parseCsv(text: string): string[][] {
 		if (ch === '\r' && input[i + 1] === '\n') {
 			endRow();
 			i += 2;
+			line += 1;
+			rowStartLine = line;
 			continue;
 		}
 		if (ch === '\n' || ch === '\r') {
 			endRow();
 			i += 1;
+			line += 1;
+			rowStartLine = line;
 			continue;
 		}
 		field += ch;
@@ -83,32 +100,36 @@ export function parseCsv(text: string): string[][] {
 	return rows;
 }
 
+export function parseCsv(text: string): string[][] {
+	return parseCsvRows(text).map((row) => row.cells);
+}
+
 export interface CsvTable {
 	/** Lowercased, trimmed header names in file order. */
 	header: string[];
-	/** One record per data row; missing trailing cells become ''. 1-based line numbers. */
+	/** One record per data row; missing trailing cells become ''. `line` is the physical file line the record starts on. */
 	records: { line: number; values: Record<string, string> }[];
 }
 
 /** First row is the header — the exchange format has no preamble. */
 export function readCsvTable(text: string): CsvTable {
-	const rows = parseCsv(text);
+	const rows = parseCsvRows(text);
 	if (rows.length === 0) {
 		throw new CsvError('file is empty');
 	}
-	const header = rows[0]!.map((name) => name.trim().toLowerCase());
+	const header = rows[0]!.cells.map((name) => name.trim().toLowerCase());
 	if (header.every((name) => name === '')) {
 		throw new CsvError('header row is empty');
 	}
 	const records: CsvTable['records'] = [];
 	for (let r = 1; r < rows.length; r++) {
-		const cells = rows[r]!;
+		const { cells, line } = rows[r]!;
 		if (cells.every((cell) => cell.trim() === '')) continue; // blank line
 		const values: Record<string, string> = {};
 		header.forEach((name, c) => {
 			if (name !== '') values[name] = (cells[c] ?? '').trim();
 		});
-		records.push({ line: r + 1, values });
+		records.push({ line, values });
 	}
 	return { header, records };
 }

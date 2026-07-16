@@ -109,7 +109,7 @@ export async function ingestGoogleCsv(
 		throw new GoogleCsvValidationError(['no data rows below the header']);
 	}
 
-	const rows: { line: number; row: GoogleCsvRow }[] = [];
+	const rows: { line: number; row: GoogleCsvRow; cells: Record<string, string> }[] = [];
 	const rowProblems: string[] = [];
 	const seen = new Map<string, number>(); // ad_id|date → first line
 	for (const record of table.records) {
@@ -125,7 +125,7 @@ export async function ingestGoogleCsv(
 				continue;
 			}
 			seen.set(key, record.line);
-			rows.push({ line: record.line, row });
+			rows.push({ line: record.line, row, cells: record.values });
 		} catch (err) {
 			if (!(err instanceof MetricParseError)) throw err;
 			rowProblems.push(`line ${record.line}: ${err.message}`);
@@ -157,27 +157,32 @@ export async function ingestGoogleCsv(
 		);
 		const accountRowId = account.rows[0]!.id;
 
-		// campaigns present in the file (id required, name best-effort)
+		// campaigns present in the file (id required, name best-effort): a
+		// real name wins over the id-based placeholder wherever it appears
+		// in the file, and a placeholder never overwrites a name a previous
+		// upload already stored.
 		const campaignIdByExt = new Map<string, string>();
-		const campaignNames = new Map<string, string>();
+		const campaignNames = new Map<string, { name: string; real: boolean }>();
 		for (const { row } of rows) {
-			if (row.externalCampaignId) {
-				const existing = campaignNames.get(row.externalCampaignId);
-				if (!existing && row.campaignName) {
-					campaignNames.set(row.externalCampaignId, row.campaignName);
-				} else if (!existing) {
-					campaignNames.set(row.externalCampaignId, `google campaign ${row.externalCampaignId}`);
-				}
+			if (!row.externalCampaignId) continue;
+			const existing = campaignNames.get(row.externalCampaignId);
+			if (row.campaignName) {
+				campaignNames.set(row.externalCampaignId, { name: row.campaignName, real: true });
+			} else if (!existing) {
+				campaignNames.set(row.externalCampaignId, {
+					name: `google campaign ${row.externalCampaignId}`,
+					real: false
+				});
 			}
 		}
-		for (const [extId, name] of campaignNames) {
+		for (const [extId, { name, real }] of campaignNames) {
 			const { rows: upserted } = await client.query<{ id: string }>(
 				`insert into campaigns (org_id, platform_account_id, external_id, name, status)
 				 values ($1, $2, $3, $4, 'unknown')
 				 on conflict (platform_account_id, external_id) where external_id is not null do update
-				   set name = excluded.name
+				   set name = case when $5 then excluded.name else campaigns.name end
 				 returning id`,
-				[db.orgId, accountRowId, extId, name]
+				[db.orgId, accountRowId, extId, name, real]
 			);
 			campaignIdByExt.set(extId, upserted[0]!.id);
 		}
@@ -252,7 +257,12 @@ export async function ingestGoogleCsv(
 		}
 
 		let snapshotRows = 0;
-		for (const { row } of rows) {
+		for (const { row, cells } of rows) {
+			// raw keeps the ORIGINAL export cells (keyed by the file's own
+			// header), not the normalized row — the 0004 contract is that a
+			// conversion bug found later can always be re-computed from what
+			// the platform actually said.
+			const raw = cells;
 			await client.query(
 				`insert into metric_snapshots (org_id, ad_entity_id, date, spend_cents, impressions, clicks, conversions, raw)
 				 values ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -271,7 +281,7 @@ export async function ingestGoogleCsv(
 					row.impressions,
 					row.clicks,
 					row.conversions,
-					JSON.stringify(row)
+					JSON.stringify(raw)
 				]
 			);
 			snapshotRows += 1;

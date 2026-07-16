@@ -41,4 +41,15 @@ describe('readCsvTable', () => {
 	it('rejects empty input', () => {
 		expect(() => readCsvTable('')).toThrowError(CsvError);
 	});
+
+	it('reports physical file lines when quoted fields span lines', () => {
+		// The import format allows newlines inside quotes — "file:line"
+		// problems must cite the line an operator's editor shows, not the
+		// parsed-record index.
+		const table = readCsvTable('kind,notes\nimage,"line one\nline two"\nvideo,after');
+		expect(table.records).toEqual([
+			{ line: 2, values: { kind: 'image', notes: 'line one\nline two' } },
+			{ line: 4, values: { kind: 'video', notes: 'after' } } // not 3 — the quoted field spans one
+		]);
+	});
 });
