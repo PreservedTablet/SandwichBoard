@@ -1,12 +1,12 @@
 import { createApi } from '$lib/api';
+import { loaded } from '$lib/load-error';
 import type { PageLoad } from './$types';
 
 export const load: PageLoad = async ({ fetch }) => {
 	const api = createApi(fetch);
-	const [{ items: assets }, { items: variants }] = await Promise.all([
-		api.listAssets(),
-		api.listCopyVariants()
-	]);
+	const [{ items: assets }, { items: variants }] = await loaded(
+		Promise.all([api.listAssets(), api.listCopyVariants()])
+	);
 	return {
 		assets,
 		headlines: variants.filter((variant) => variant.kind === 'headline'),

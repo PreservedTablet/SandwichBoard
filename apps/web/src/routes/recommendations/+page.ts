@@ -1,5 +1,6 @@
 import { recommendationStatuses, type RecommendationStatus } from '@sandwichboard/core';
 import { createApi } from '$lib/api';
+import { loaded } from '$lib/load-error';
 import type { PageLoad } from './$types';
 
 export const load: PageLoad = async ({ fetch, url }) => {
@@ -8,6 +9,6 @@ export const load: PageLoad = async ({ fetch, url }) => {
 	const status = recommendationStatuses.includes(requested as RecommendationStatus)
 		? (requested as RecommendationStatus)
 		: undefined;
-	const { items } = await api.listRecommendations(status);
+	const { items } = await loaded(api.listRecommendations(status));
 	return { recommendations: items, activeStatus: status ?? null };
 };
