@@ -43,7 +43,24 @@ describe.skipIf(!TEST_DATABASE_URL)('analysis harness (integration)', () => {
 	beforeAll(async () => {
 		await runMigrations(TEST_DATABASE_URL!);
 		db = createOrgDb(TEST_DATABASE_URL!, ORG);
-		await db.query('delete from recommendations where org_id = $1', [ORG]);
+		// recommendations and audit_log are append-only under forced RLS
+		// (migration 0006) — no delete policy exists, so when the test
+		// runner is a plain (non-superuser) owner a bare DELETE silently
+		// matches nothing. Test cleanup is the one legitimate wipe: the
+		// owner grants itself a temporary org-scoped delete policy.
+		const wipeAppendOnly = async (table: 'recommendations' | 'audit_log') => {
+			await db.tx(async (client) => {
+				await client.query(
+					`create policy tmp_analysis_cleanup on ${table} for delete using (org_id = app_current_org())`
+				);
+				try {
+					await client.query(`delete from ${table} where org_id = $1`, [ORG]);
+				} finally {
+					await client.query(`drop policy tmp_analysis_cleanup on ${table}`);
+				}
+			});
+		};
+		await wipeAppendOnly('recommendations');
 		await db.query('delete from metric_snapshots where org_id = $1', [ORG]);
 		await db.query('delete from ad_entities where org_id = $1', [ORG]);
 		await db.query('delete from campaigns where org_id = $1', [ORG]);
@@ -52,7 +69,7 @@ describe.skipIf(!TEST_DATABASE_URL)('analysis harness (integration)', () => {
 		await db.query('delete from creatives where org_id = $1', [ORG]);
 		await db.query('delete from copy_variants where org_id = $1', [ORG]);
 		await db.query('delete from settings where org_id = $1', [ORG]);
-		await db.query('delete from audit_log where org_id = $1', [ORG]);
+		await wipeAppendOnly('audit_log');
 
 		// The operator-side step from docs/setup.md §4.5: a login user
 		// carrying the analyst grants. Idempotent for repeated runs.

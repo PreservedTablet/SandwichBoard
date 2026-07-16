@@ -2,10 +2,14 @@ import pg from 'pg';
 
 /**
  * Org-scoped database access. Every statement runs inside a transaction that
- * has `app.org_id` set (transaction-local), so RLS policies written against
- * `app_current_org()` (migration 0001) see the right tenant even though the
- * privileged app role also scopes every query by org_id explicitly —
- * belt and suspenders, and the analyst role in Phase 3 gets RLS for free.
+ * has `app.org_id` set (transaction-local), so the FORCEd RLS policies
+ * (migrations 0001–0006) see the right tenant. Two belts: every query also
+ * scopes by org_id explicitly, and — since 0006 forces RLS — the policies
+ * bind the app connection too, not just the analyst role. One honest
+ * caveat: a SUPERUSER connection bypasses RLS no matter what (Postgres
+ * semantics), so deployments wanting the second belt must point
+ * DATABASE_URL at a non-superuser role; the explicit WHERE clauses hold
+ * either way.
  */
 export interface OrgDb {
 	readonly orgId: string;
