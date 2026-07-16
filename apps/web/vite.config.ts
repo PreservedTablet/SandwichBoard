@@ -18,11 +18,14 @@ export default defineConfig({
 
 	server: {
 		proxy: {
-			// Dev-only: the browser talks same-origin `/api/*`; in production a
-			// reverse proxy (Caddy/Tunnel, docs/plan/02) does the same mapping.
-			// 3000 mirrors the API_PORT default in packages/core/src/config.ts —
-			// only config.ts may read env, so the dev proxy states the default.
-			'/api': 'http://127.0.0.1:3000'
+			// Dev-only: the browser talks same-origin `/api/*` and `/internal/*`
+			// (the token-guarded command surface behind "Sync now" / CSV upload);
+			// in production a reverse proxy (Caddy/Tunnel, docs/plan/02) does the
+			// same two mappings. 3000 mirrors the API_PORT default in
+			// packages/core/src/config.ts — only config.ts may read env, so the
+			// dev proxy states the default.
+			'/api': 'http://127.0.0.1:3000',
+			'/internal': 'http://127.0.0.1:3000'
 		}
 	}
 });
