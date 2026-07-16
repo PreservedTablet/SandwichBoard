@@ -88,20 +88,23 @@ infisical run --env=dev --path=/api -- pnpm dev
 
 ## Repository layout
 
-| Path              | Contents                                                          |
-| ----------------- | ----------------------------------------------------------------- |
-| `apps/web`        | SvelteKit 2 / Svelte 5 dashboard                                  |
-| `apps/api`        | Fastify 5 API: auth, CRUD, ingestion, storage drivers, migrations |
-| `packages/core`   | zod schemas, shared types, the single config module               |
-| `db/migrations`   | Plain SQL, applied by `pnpm db:migrate` on any Postgres           |
-| `prompts/`        | Versioned prompt templates (prompts are code)                     |
-| `config/`         | Public configuration manifest                                     |
-| `docs/plan/`      | The committed v1 plan set — the spec this repo is built from      |
-| `docs/decisions/` | Decision records, including ☐ verify-register resolutions         |
+| Path              | Contents                                                     |
+| ----------------- | ------------------------------------------------------------ |
+| `apps/web`        | SvelteKit 2 / Svelte 5 dashboard                             |
+| `apps/api`        | Fastify 5 API: CRUD, ingestion, storage drivers, migrations  |
+| `packages/core`   | zod schemas, shared types, the single config module          |
+| `db/migrations`   | Plain SQL, applied by `pnpm db:migrate` on any Postgres      |
+| `prompts/`        | Versioned prompt templates (prompts are code)                |
+| `config/`         | Public configuration manifest                                |
+| `docs/plan/`      | The committed v1 plan set — the spec this repo is built from |
+| `docs/decisions/` | Decision records, including ☐ verify-register resolutions    |
 
-Claude Code session profiles: `mcp-draft.json` (drafting/analysis — database
-as read-only analyst, **no ad-platform access**) and `mcp-manage.json`
-(interactive campaign management). Never mix them — see `CLAUDE.md`.
+Claude Code session profiles: `mcp-draft.json` (drafting/analysis —
+**deliberately empty**: no ad-platform access, and database access is plain
+`psql` over the read-only `ANALYST_DATABASE_URL`, no database MCP either —
+docs/decisions/0007) and `mcp-manage.json` (interactive campaign
+management, official Meta Ads MCP). Always launch with
+`--strict-mcp-config`; never mix them — see `CLAUDE.md`.
 
 ## Security
 

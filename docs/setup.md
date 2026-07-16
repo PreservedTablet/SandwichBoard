@@ -79,6 +79,15 @@ Migrations are plain SQL in `db/migrations/`, applied in order, once each,
 inside transactions, recorded in `schema_migrations`. Re-running is a no-op.
 Never edit an applied migration — add a new one.
 
+**App role:** row-level security is FORCEd (migration 0006), so the org
+policies bind the app connection too — _unless_ `DATABASE_URL` connects as
+a Postgres **superuser**, which always bypasses RLS (e.g. the default
+`postgres` user of a stock container). The explicit `where org_id` filters
+in every query protect you either way, but to get the enforced second belt
+— including a genuinely append-only `audit_log` — point `DATABASE_URL` at
+a dedicated non-superuser role that owns the schema (run migrations as it;
+it needs `CREATEROLE` for migration 0005's analyst role).
+
 ## 3. Storage
 
 `STORAGE_DRIVER=local-fs` (default) writes under `STORAGE_LOCAL_PATH`
@@ -182,6 +191,16 @@ curl -X POST -H "Authorization: Bearer $YOUR_INTERNAL_API_TOKEN" \
 developer token is approved (the pre-build queue item, docs/plan/00) — it
 will wire the official read-only Google Ads MCP behind the same connector
 seam. Nothing about the CSV path changes when it does.
+
+## 3.8 Serving the dashboard
+
+The web app reads no configuration: the browser talks **same-origin**
+`/api/*` (reads) and `/internal/*` (the token-guarded "Sync now" / CSV
+upload commands). In dev, `pnpm dev`'s vite server proxies **both**
+prefixes to the API on `127.0.0.1:3000`. In production your reverse proxy
+(Caddy, nginx, Cloudflare Tunnel — docs/plan/02) must do the same two
+mappings in front of the adapter-node build — forgetting `/internal/*`
+breaks exactly the two dashboard commands while everything else works.
 
 ## 4. Claude Code session profiles
 
