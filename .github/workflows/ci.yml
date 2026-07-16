@@ -11,6 +11,11 @@ name: CI
 on:
   push:
     branches: ['**']
+  # Fork PRs never fire `push` in this repo — without this trigger a public
+  # repo that solicits contributions (CONTRIBUTING.md) either merges fork
+  # PRs unchecked or, with required status checks, can never merge them.
+  # The concurrency group below dedupes same-repo double-fires.
+  pull_request:
 
 permissions:
   contents: read
@@ -114,13 +119,15 @@ jobs:
       - name: No-scheduler gate (workflows must stay human-invoked)
         run: |
           set -euo pipefail
+          # Match the keys anywhere on a line, not just at line start, so a
+          # flow-style (single-line braces) trigger cannot slip past either.
           schedule_key='schedule'':'
           cron_key='cron'':'
-          if grep -REn "^[[:space:]]*${schedule_key}" .github/workflows; then
+          if grep -REn "(^|[[:space:]{])${schedule_key}" .github/workflows; then
             echo "::error::a workflow gained a schedule trigger — forbidden by docs/plan/06"
             exit 1
           fi
-          if grep -REn "^[[:space:]]*-?[[:space:]]*${cron_key}" .github/workflows; then
+          if grep -REn "(^|[[:space:]{-])${cron_key}" .github/workflows; then
             echo "::error::a workflow gained a cron key — forbidden by docs/plan/06"
             exit 1
           fi
