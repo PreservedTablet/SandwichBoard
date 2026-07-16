@@ -87,9 +87,10 @@ jobs:
           # ref's build. Each branch answers for its own history.
           "$(go env GOPATH)/bin/gitleaks" git --redact --no-banner --verbose --log-opts="--full-history HEAD" .
 
-      - name: Dependency audit (pnpm audit)
-        run: pnpm audit --audit-level high
-
+      # `pnpm audit` is gone on purpose: npm retired its audit endpoints
+      # (410 Gone) and pnpm still calls them, failing every run. osv-scanner
+      # below covers the same advisories (OSV ingests the GitHub Advisory
+      # Database that npm audit reads) from the lockfile, deterministically.
       - name: Dependency audit (osv-scanner, lockfile)
         run: |
           go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.4.0
