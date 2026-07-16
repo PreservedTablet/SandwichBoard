@@ -50,6 +50,8 @@ class FakeMetaConnector implements MetaConnector {
 	insights = new Map<string, MetaInsightsRow[]>();
 	failInsightsFor = new Map<string, MetaCliError>();
 	failAccountInfo: MetaCliError | null = null;
+	/** Every insights fetch, recorded — the per-ad watermark assertions. */
+	calls: { adId: string; since: string; until: string }[] = [];
 
 	async getAccountInfo(): Promise<MetaAdAccount> {
 		if (this.failAccountInfo) throw this.failAccountInfo;
@@ -62,6 +64,7 @@ class FakeMetaConnector implements MetaConnector {
 		return this.ads;
 	}
 	async getAdInsightsDaily(adId: string, since: string, until: string): Promise<MetaInsightsRow[]> {
+		this.calls.push({ adId, since, until });
 		const fail = this.failInsightsFor.get(adId);
 		if (fail) throw fail;
 		// Meta clamps to time_range; the fake does the same, which is what
@@ -69,6 +72,9 @@ class FakeMetaConnector implements MetaConnector {
 		return (this.insights.get(adId) ?? []).filter(
 			(row) => row.date_start >= since && row.date_start <= until
 		);
+	}
+	sinceUsedFor(adId: string): string | undefined {
+		return this.calls.filter((c) => c.adId === adId).at(-1)?.since;
 	}
 }
 
@@ -369,7 +375,7 @@ describe.skipIf(!TEST_DATABASE_URL)('meta sync (integration)', () => {
 	});
 
 	describe('run 2 — two days later: watermark catch-up heals the skipped day', () => {
-		it('starts at the watermark (re-pulling it) and ingests the gap', async () => {
+		it('starts each ad at its own watermark (re-pulling it) and ingests the gap', async () => {
 			currentNow = new Date('2026-07-12T18:00:00Z'); // "today" moved on
 			// Platform restated 07-08 upward and delivered three more days.
 			fake.insights.set('1201', [
@@ -380,13 +386,20 @@ describe.skipIf(!TEST_DATABASE_URL)('meta sync (integration)', () => {
 				day('2026-07-11', '7.00', '400', '8')
 			]);
 
+			fake.calls = [];
 			const res = await inject(INTERNAL_TOKEN);
 			expect(res.statusCode).toBe(200);
 			expect(res.json()).toMatchObject({
 				watermark: '2026-07-08',
-				range: { since: '2026-07-08', until: '2026-07-11' },
 				snapshot_rows_upserted: 5 // 4 × ad 1201 + re-upserted 1202/07-08
 			});
+			// Watermarks are per ad: the delivering ads resume from their own
+			// last snapshot; the never-delivered ad (1203) is asked from the
+			// backfill floor — which is also what the summary range reports.
+			expect(fake.sinceUsedFor('1201')).toBe('2026-07-08');
+			expect(fake.sinceUsedFor('1202')).toBe('2026-07-08');
+			expect(fake.sinceUsedFor('1203')).toBe('2026-04-13');
+			expect(res.json().range).toEqual({ since: '2026-04-13', until: '2026-07-11' });
 		});
 
 		it('healed the restated day in place and filled the gap — no duplicates', async () => {
@@ -411,9 +424,12 @@ describe.skipIf(!TEST_DATABASE_URL)('meta sync (integration)', () => {
 				 from metric_snapshots where org_id = $1`,
 				[ORG]
 			);
+			fake.calls = [];
 			const res = await inject(INTERNAL_TOKEN);
 			expect(res.statusCode).toBe(200);
-			expect(res.json().range).toEqual({ since: '2026-07-11', until: '2026-07-11' });
+			// Delivering ads re-pull exactly their newest synced day.
+			expect(fake.sinceUsedFor('1201')).toBe('2026-07-11');
+			expect(fake.sinceUsedFor('1202')).toBe('2026-07-08');
 			const after = await db.query(
 				`select count(*)::int as n, sum(spend_cents)::int as total
 				 from metric_snapshots where org_id = $1`,
@@ -512,10 +528,10 @@ describe.skipIf(!TEST_DATABASE_URL)('meta sync (integration)', () => {
 				new MetaCliError('meta ads insights get failed (exit 1)', 'invocation')
 			);
 
+			fake.calls = [];
 			const res = await inject(INTERNAL_TOKEN);
 			expect(res.statusCode).toBe(200);
 			expect(res.json()).toMatchObject({
-				range: { since: '2026-07-11', until: '2026-07-12' },
 				snapshot_rows_upserted: 1,
 				deadletters: 2
 			});
@@ -534,10 +550,49 @@ describe.skipIf(!TEST_DATABASE_URL)('meta sync (integration)', () => {
 			expect(letters.rows.find((r) => r.payload.phase === 'snapshot')!.payload.row.date_start).toBe(
 				'2026-07-12'
 			);
+			// the failed fetch's deadletter records the range IT used — ad
+			// 1202's own watermark (its only snapshot is 07-08), not the
+			// account-wide 07-11
+			expect(letters.rows.find((r) => r.payload.phase === 'insights')!.payload.range).toEqual({
+				since: '2026-07-08',
+				until: '2026-07-12'
+			});
 
 			const status = await app.inject({ method: 'GET', url: '/api/sync/status' });
 			expect(status.json().open_deadletters).toBe(2);
 			fake.failInsightsFor.clear();
+		});
+
+		it('a later run heals the failed ad from its own watermark — no permanent gap', async () => {
+			// Ad 1202's fetch failed above while 1201 advanced. With an
+			// account-wide watermark the next run would start every ad at the
+			// account's high-water mark and 1202's missed days would be lost
+			// forever; per-ad watermarks make the next run re-ask 1202 from
+			// its own last snapshot (07-08).
+			fake.insights.set('1202', [
+				day('2026-07-11', '4.00', '150', '3'),
+				day('2026-07-12', '5.00', '200', '4') // days the failure skipped
+			]);
+			fake.insights.set('1201', [day('2026-07-12', '8.00', '500', '9')]); // clean again
+
+			fake.calls = [];
+			const res = await inject(INTERNAL_TOKEN);
+			expect(res.statusCode).toBe(200);
+			expect(fake.sinceUsedFor('1202')).toBe('2026-07-08');
+			expect(fake.sinceUsedFor('1201')).toBe('2026-07-11');
+			expect(res.json()).toMatchObject({ snapshot_rows_upserted: 3, deadletters: 0 });
+
+			const rows = await db.query(
+				`select to_char(s.date, 'YYYY-MM-DD') as date, s.spend_cents
+				 from metric_snapshots s join ad_entities e on e.id = s.ad_entity_id
+				 where s.org_id = $1 and e.external_ad_id = '1202' order by s.date`,
+				[ORG]
+			);
+			expect(rows.rows).toEqual([
+				{ date: '2026-07-08', spend_cents: 300 },
+				{ date: '2026-07-11', spend_cents: 400 },
+				{ date: '2026-07-12', spend_cents: 500 } // healed, not lost
+			]);
 		});
 
 		it('aborts on auth failure and records meta_sync_failed', async () => {

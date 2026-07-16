@@ -82,6 +82,8 @@ export interface MetaSyncSummary {
 
 interface FetchFailure {
 	ad: MetaAd;
+	/** The range start this ad's failed fetch used (its own watermark). */
+	since: string;
 	error: string;
 }
 
@@ -141,7 +143,7 @@ async function fetchAndWrite(
 	const account = await connector.getAccountInfo(); // auth preflight
 	const { date: until, timezoneUsed } = yesterdayInTimeZone(now(), account.timezone_name);
 
-	const { accountRowId, watermark } = await db.tx(async (client) => {
+	const { accountRowId, watermark, watermarkByAd } = await db.tx(async (client) => {
 		const { rows } = await client.query<{ id: string }>(
 			`insert into platform_accounts (org_id, platform, external_account_id, label, currency, timezone)
 			 values ($1, $2, $3, $4, $5, $6)
@@ -158,41 +160,57 @@ async function fetchAndWrite(
 			]
 		);
 		const accountId = rows[0]!.id;
-		const wm = await client.query<{ watermark: string | null }>(
-			`select to_char(max(s.date), 'YYYY-MM-DD') as watermark
+		const wm = await client.query<{ external_ad_id: string; watermark: string }>(
+			`select e.external_ad_id, to_char(max(s.date), 'YYYY-MM-DD') as watermark
 			 from metric_snapshots s
 			 join ad_entities e on e.id = s.ad_entity_id
-			 where e.platform_account_id = $1`,
+			 where e.platform_account_id = $1
+			 group by e.external_ad_id`,
 			[accountId]
 		);
-		return { accountRowId: accountId, watermark: wm.rows[0]?.watermark ?? null };
+		const byAd = new Map(wm.rows.map((row) => [row.external_ad_id, row.watermark]));
+		const accountWide =
+			wm.rows.length === 0
+				? null
+				: wm.rows.map((row) => row.watermark).reduce((a, b) => (a > b ? a : b));
+		return { accountRowId: accountId, watermark: accountWide, watermarkByAd: byAd };
 	});
 
 	// Range: watermark→yesterday inclusive — the newest synced day is pulled
 	// again on purpose (heals partial boundary days and late attribution);
 	// no watermark ⇒ the 90-day backfill floor. A watermark past `until`
 	// (timezone drift) clamps to one day, still idempotent.
-	const since =
-		watermark === null
-			? addDays(until, -(INGEST_BACKFILL_DAYS - 1))
-			: watermark > until
-				? until
-				: watermark;
+	//
+	// The watermark is PER AD, not per account: with an account-wide mark,
+	// one ad's transient fetch failure would be skipped past by the ads that
+	// succeeded — the next run's `since` would sit beyond the failed ad's
+	// gap, silently and permanently under-counting that combo. Each ad
+	// resumes from its own last snapshot instead.
+	const backfillSince = addDays(until, -(INGEST_BACKFILL_DAYS - 1));
+	const sinceForAd = (externalAdId: string): string => {
+		const mark = watermarkByAd.get(externalAdId);
+		if (mark === undefined) return backfillSince;
+		return mark > until ? until : mark;
+	};
 
 	const campaigns = await connector.listCampaigns();
 	const ads = await connector.listAds();
 
 	const insightsByAd = new Map<string, MetaInsightsRow[]>();
 	const fetchFailures: FetchFailure[] = [];
+	let earliestSince = until;
 	for (const ad of ads) {
+		const since = sinceForAd(ad.id);
+		if (since < earliestSince) earliestSince = since;
 		try {
 			insightsByAd.set(ad.id, await connector.getAdInsightsDaily(ad.id, since, until));
 		} catch (err) {
 			// A dead token fails every remaining call identically — abort.
 			if (err instanceof MetaCliError && err.kind === 'auth') throw err;
-			fetchFailures.push({ ad, error: err instanceof Error ? err.message : String(err) });
+			fetchFailures.push({ ad, since, error: err instanceof Error ? err.message : String(err) });
 		}
 	}
+	const since = ads.length > 0 ? earliestSince : (watermark ?? backfillSince);
 
 	// ---- write phase: one transaction, one writer per org at a time ----
 	const summary = await db.tx(async (client) => {
@@ -357,7 +375,7 @@ async function fetchAndWrite(
 					phase: 'insights',
 					external_ad_id: failure.ad.id,
 					ad_name: failure.ad.name,
-					range: { since, until }
+					range: { since: failure.since, until }
 				},
 				failure.error
 			);
