@@ -41,10 +41,28 @@ SandwichBoard ships logic; you bring accounts (docs/plan/01):
 
 ## Status
 
-**Phase 0 (foundation) — done.** Monorepo scaffold, config module, storage
-adapter (local-fs), plain-SQL migrations, CI security gates. Phases 1–5
-(creative library → metrics spine → analysis → scout/drafts → publish rail)
-are specified in [docs/plan/06-BUILD-PLAN.md](docs/plan/06-BUILD-PLAN.md).
+Phases 0–3 of the [build plan](docs/plan/06-BUILD-PLAN.md) are implemented;
+4–5 are not started.
+
+- **Phase 0 — foundation: done.** Monorepo scaffold, single zod config
+  module, storage adapter (local-fs), plain-SQL migration runner, CI
+  security gates (gitleaks, osv-scanner, no-scheduler + no-Anthropic-key
+  greps).
+- **Phase 1 — creative library: done.** Assets / copy variants / combos
+  with short codes, the naming builder+parser, UTM builder, upload +
+  tokenized reads, combo builder UI, spreadsheet importer
+  (`pnpm import:library`).
+- **Phase 2 — metrics spine: done.** Manual watermark-idempotent Meta sync
+  (official `meta-ads` CLI), Google CSV upload (works with zero API
+  credentials), evidence-gated leaderboard views, staleness banner,
+  unmatched-ads + deadletter surfacing. Live Google GAQL ingestion waits on
+  a developer token (documented in docs/decisions/0006).
+- **Phase 3 — analysis harness: done.** DB-enforced read-only `analyst`
+  role, `/analyze` session contract (`prompts/analyze.md`), recommendations
+  table with immutable evidence and an audited accept/reject/done loop.
+- **Phase 4 — scout & drafts / Phase 5 — publish rail: not started.** Both
+  need maintainer-supplied inputs (voice-guide examples, Postiz deployment)
+  before an agent session can build them.
 
 ## Quickstart
 
