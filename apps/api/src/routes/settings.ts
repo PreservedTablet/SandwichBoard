@@ -7,6 +7,7 @@ import {
 } from '@sandwichboard/core';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { writeAudit } from '../lib/audit.js';
 import type { RouteDeps } from './shared.js';
 
 /**
@@ -49,7 +50,7 @@ const keyParamSchema = z.object({
 });
 
 export function registerSettingsRoutes(app: FastifyInstance, deps: RouteDeps): void {
-	const { db } = deps;
+	const { db, actor } = deps;
 
 	app.get('/api/settings', async () => {
 		const { rows } = await db.query(
@@ -66,12 +67,29 @@ export function registerSettingsRoutes(app: FastifyInstance, deps: RouteDeps): v
 		if (problem) {
 			return reply.status(400).send({ error: 'invalid_setting', message: `${key}: ${problem}` });
 		}
-		const { rows } = await db.query(
-			`insert into settings (org_id, key, value) values ($1, $2, $3)
-			 on conflict (org_id, key) do update set value = excluded.value
-			 returning key, value, updated_at`,
-			[db.orgId, key, JSON.stringify(value)]
-		);
-		return rows[0];
+		// Audited like every decision-affecting change (CLAUDE.md): the
+		// prefix is the metrics join key and the conversion mapping changes
+		// what counts as a conversion — silent edits would make historical
+		// numbers unexplainable.
+		return db.tx(async (client) => {
+			const before = await client.query<{ value: unknown }>(
+				'select value from settings where org_id = $1 and key = $2',
+				[db.orgId, key]
+			);
+			const { rows } = await client.query(
+				`insert into settings (org_id, key, value) values ($1, $2, $3)
+				 on conflict (org_id, key) do update set value = excluded.value
+				 returning key, value, updated_at`,
+				[db.orgId, key, JSON.stringify(value)]
+			);
+			await writeAudit(client, {
+				orgId: db.orgId,
+				actor,
+				action: 'setting_changed',
+				subjectTable: 'settings',
+				payload: { key, from: before.rows[0]?.value ?? null, to: value }
+			});
+			return rows[0];
+		});
 	});
 }

@@ -40,9 +40,12 @@ export function registerMetricsRoutes(app: FastifyInstance, deps: RouteDeps): vo
 				        ad_count::int as ad_count, days_with_delivery::int as days_with_delivery,
 				        to_char(first_date, 'YYYY-MM-DD') as first_date,
 				        to_char(last_date, 'YYYY-MM-DD') as last_date,
-				        spend_cents::bigint::int as spend_cents, impressions::bigint::int as impressions,
-				        clicks::bigint::int as clicks, conversions::float8 as conversions,
-				        conversion_value_cents::int as conversion_value_cents,
+				        -- float8, not int: cumulative totals outlive the int4 range
+				        -- (~$21M spend / 2.1B impressions would 500 the endpoint);
+				        -- float8 is exact for integers this side of 2^53.
+				        spend_cents::float8 as spend_cents, impressions::float8 as impressions,
+				        clicks::float8 as clicks, conversions::float8 as conversions,
+				        conversion_value_cents::float8 as conversion_value_cents,
 				        ctr::float8 as ctr, cpc_cents::float8 as cpc_cents, cpm_cents::float8 as cpm_cents,
 				        cpa_cents::float8 as cpa_cents
 				 from v_combo_leaderboard
@@ -73,21 +76,21 @@ export function registerMetricsRoutes(app: FastifyInstance, deps: RouteDeps): vo
 			platform === 'all'
 				? await db.query(
 						`select creative_id, to_char(date, 'YYYY-MM-DD') as date,
-						        sum(spend_cents)::bigint::int as spend_cents,
-						        sum(impressions)::bigint::int as impressions,
-						        sum(clicks)::bigint::int as clicks
+						        sum(spend_cents)::float8 as spend_cents,
+						        sum(impressions)::float8 as impressions,
+						        sum(clicks)::float8 as clicks
 						 from v_combo_daily
-						 where org_id = $1 and date > current_date - ($2 || ' days')::interval
+						 where org_id = $1 and date >= current_date - ($2 || ' days')::interval
 						 group by creative_id, date order by creative_id, date`,
 						[db.orgId, days]
 					)
 				: await db.query(
 						`select creative_id, to_char(date, 'YYYY-MM-DD') as date,
-						        spend_cents::bigint::int as spend_cents,
-						        impressions::bigint::int as impressions,
-						        clicks::bigint::int as clicks
+						        spend_cents::float8 as spend_cents,
+						        impressions::float8 as impressions,
+						        clicks::float8 as clicks
 						 from v_combo_daily
-						 where org_id = $1 and platform = $2 and date > current_date - ($3 || ' days')::interval
+						 where org_id = $1 and platform = $2 and date >= current_date - ($3 || ' days')::interval
 						 order by creative_id, date`,
 						[db.orgId, platform, days]
 					);
