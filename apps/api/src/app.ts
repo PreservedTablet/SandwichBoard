@@ -20,6 +20,8 @@ export interface AppDeps {
 	internalToken?: string;
 	/** Present when Meta ingestion is configured (docs/decisions/0005). */
 	runMetaSync?: () => Promise<MetaSyncSummary>;
+	/** Upload cap override — tests exercise the mid-stream limit cheaply. */
+	maxUploadBytes?: number;
 }
 
 export interface BuildAppOptions {
@@ -57,7 +59,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
 			db: opts.deps.db,
 			storage: opts.deps.storage,
 			fileTokens: new FileTokenSigner(),
-			actor: 'operator'
+			actor: 'operator',
+			maxUploadBytes: opts.deps.maxUploadBytes
 		};
 		registerSettingsRoutes(app, deps);
 		registerAssetRoutes(app, deps);

@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
@@ -188,6 +189,70 @@ describe.skipIf(!TEST_DATABASE_URL)('creative library API (integration)', () => 
 				headers: { 'content-type': 'text/html' }
 			});
 			expect(res.statusCode).toBe(415);
+		});
+
+		it('rejects an over-limit chunked upload with 413 — not a process crash — and keeps the stored file', async () => {
+			// A streamed body without content-length defeats the header
+			// pre-check, so the mid-stream byte limit must trip inside the
+			// managed pipeline. Before the pipeline fix this raised an
+			// unhandled stream 'error' and killed the API process; before the
+			// temp-file write it also truncated the existing object in place.
+			const smallCapApp = buildApp({
+				logLevel: 'silent',
+				deps: { db, storage: new LocalFsStorage(storageDir), maxUploadBytes: 4 * 1024 }
+			});
+			try {
+				const big = Readable.from(
+					(async function* () {
+						for (let i = 0; i < 8; i += 1) yield Buffer.alloc(1024, 7);
+					})()
+				);
+				const res = await smallCapApp.inject({
+					method: 'PUT',
+					url: `/api/assets/${assetId}/file`,
+					payload: big,
+					headers: { 'content-type': 'image/png' }
+				});
+				expect(res.statusCode).toBe(413);
+			} finally {
+				await smallCapApp.close();
+			}
+
+			const urlRes = await app.inject({ method: 'GET', url: `/api/assets/${assetId}/file-url` });
+			expect(urlRes.statusCode).toBe(200);
+			const file = await app.inject({ method: 'GET', url: urlRes.json().url });
+			expect(file.statusCode).toBe(200);
+			expect(file.rawPayload.equals(PNG_1PX)).toBe(true);
+		});
+
+		it('a source failure mid-upload leaves the stored file intact', async () => {
+			const bad = new Readable({
+				read() {
+					this.push(Buffer.alloc(512, 3));
+					this.destroy(new Error('client aborted'));
+				}
+			});
+			let status: number | null = null;
+			try {
+				const res = await app.inject({
+					method: 'PUT',
+					url: `/api/assets/${assetId}/file`,
+					payload: bad,
+					headers: { 'content-type': 'image/png' }
+				});
+				status = res.statusCode;
+			} catch {
+				// Some transports surface the aborted body as a rejection —
+				// what this test pins down is that the process survives and
+				// the previously stored bytes do too.
+			}
+			if (status !== null) expect(status).toBeGreaterThanOrEqual(400);
+
+			const urlRes = await app.inject({ method: 'GET', url: `/api/assets/${assetId}/file-url` });
+			expect(urlRes.statusCode).toBe(200);
+			const file = await app.inject({ method: 'GET', url: urlRes.json().url });
+			expect(file.statusCode).toBe(200);
+			expect(file.rawPayload.equals(PNG_1PX)).toBe(true);
 		});
 	});
 

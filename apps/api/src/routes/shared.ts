@@ -10,6 +10,8 @@ export interface RouteDeps {
 	fileTokens: FileTokenSigner;
 	/** Audit actor for this deployment; 'operator' until sessions exist. */
 	actor: string;
+	/** Upload cap override — tests exercise the mid-stream limit cheaply. */
+	maxUploadBytes?: number;
 }
 
 export const uuidParamSchema = z.object({ id: z.uuid() });

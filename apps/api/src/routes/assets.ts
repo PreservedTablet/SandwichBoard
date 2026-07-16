@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { Transform } from 'node:stream';
+import { PassThrough, Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import {
 	assetCreateSchema,
 	assetKinds,
@@ -76,6 +77,7 @@ const ASSET_COLUMNS =
 
 export function registerAssetRoutes(app: FastifyInstance, deps: RouteDeps): void {
 	const { db, storage, fileTokens } = deps;
+	const maxUploadBytes = deps.maxUploadBytes ?? MAX_UPLOAD_BYTES;
 
 	app.get('/api/assets', async (request) => {
 		const query = listQuerySchema.parse(request.query);
@@ -187,10 +189,10 @@ export function registerAssetRoutes(app: FastifyInstance, deps: RouteDeps): void
 			});
 		}
 		const declared = Number(request.headers['content-length'] ?? '0');
-		if (declared > MAX_UPLOAD_BYTES) {
+		if (declared > maxUploadBytes) {
 			return reply
 				.status(413)
-				.send({ error: 'too_large', message: `upload exceeds ${MAX_UPLOAD_BYTES} bytes` });
+				.send({ error: 'too_large', message: `upload exceeds ${maxUploadBytes} bytes` });
 		}
 
 		const existing = await db.query<{ storage_path: string | null }>(
@@ -212,16 +214,31 @@ export function registerAssetRoutes(app: FastifyInstance, deps: RouteDeps): void
 				done(null, chunk);
 			}
 		});
-		await storage.put(key, body.pipe(byteLimit(MAX_UPLOAD_BYTES)).pipe(hashTap), { contentType });
+		// Managed pipeline from the limiter down: a byte-limit trip, client
+		// abort, or disk error destroys the chain and rejects here as an
+		// ordinary error (the 413 reaches the error boundary) — the original
+		// bare .pipe() chain raised an unhandled stream 'error' and killed
+		// the process. The request stream itself stays outside the pipeline
+		// (bridged via .pipe + explicit error forwarding) so rejecting an
+		// upload never destroys the connection the 413 response rides on.
+		const limiter = byteLimit(maxUploadBytes);
+		body.on('error', (err) => limiter.destroy(err));
+		body.pipe(limiter);
+		const limited = new PassThrough();
+		await Promise.all([
+			pipeline(limiter, hashTap, limited),
+			storage.put(key, limited, { contentType })
+		]);
 
 		const previous = existing.rows[0].storage_path;
-		if (previous && previous !== key) await storage.delete(previous);
-
 		const { rows } = await db.query(
 			`update assets set storage_path = $3, storage_content_type = $4, storage_sha256 = $5
 			 where org_id = $1 and id = $2 returning ${ASSET_COLUMNS}`,
 			[db.orgId, id, key, contentType, hash.digest('hex')]
 		);
+		// Remove the superseded object only after the row points at the new
+		// one — failing between the two must not orphan the asset's file.
+		if (previous && previous !== key) await storage.delete(previous);
 		return rows[0];
 	});
 

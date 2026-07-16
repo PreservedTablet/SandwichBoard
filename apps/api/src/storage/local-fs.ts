@@ -1,5 +1,6 @@
+import { randomBytes } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
 import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -51,10 +52,20 @@ export class LocalFsStorage implements StorageAdapter {
 	async put(key: string, body: Buffer | Readable): Promise<void> {
 		const path = this.#pathFor(key);
 		await mkdir(dirname(path), { recursive: true });
-		if (Buffer.isBuffer(body)) {
-			await writeFile(path, body);
-		} else {
-			await pipeline(body, createWriteStream(path));
+		// Write to a sibling temp path, then rename into place (atomic within
+		// a directory on POSIX): a failed or aborted upload must never leave
+		// the object it replaces truncated or half-written.
+		const tmp = `${path}.tmp-${randomBytes(6).toString('hex')}`;
+		try {
+			if (Buffer.isBuffer(body)) {
+				await writeFile(tmp, body, { flag: 'wx' });
+			} else {
+				await pipeline(body, createWriteStream(tmp, { flags: 'wx' }));
+			}
+			await rename(tmp, path);
+		} catch (err) {
+			await rm(tmp, { force: true }).catch(() => undefined); // best-effort cleanup; the original error surfaces
+			throw err;
 		}
 	}
 
