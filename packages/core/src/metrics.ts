@@ -81,3 +81,19 @@ export function parseCount(value: string): number {
 	}
 	return n;
 }
+
+/**
+ * Parse a plain non-negative decimal ("2", "2.5") into a number. Platforms
+ * report fractional conversions this way; anything else — '1e3', '0x10',
+ * '1,5' — is a mangled cell that must deadletter, never silently coerce
+ * (bare Number() would happily accept scientific and hex notation).
+ */
+export function parseDecimal(value: string): number {
+	const trimmed = value.trim();
+	if (!MONEY_PATTERN.test(trimmed)) {
+		throw new MetricParseError(
+			`unparseable decimal value ${JSON.stringify(value)} — expected a plain non-negative decimal`
+		);
+	}
+	return Number(trimmed);
+}

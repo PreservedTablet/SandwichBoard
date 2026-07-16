@@ -80,21 +80,27 @@ export const assetRowSchema = z.object({
 });
 export type AssetRow = z.infer<typeof assetRowSchema>;
 
-export const assetCreateSchema = z.object({
-	kind: z.enum(assetKinds),
-	title,
-	production_status: z.enum(assetProductionStatuses).default('ready'),
-	external_url: httpUrl.optional(),
-	width: z.number().int().positive().optional(),
-	height: z.number().int().positive().optional(),
-	duration_s: z.number().positive().optional(),
-	aspect_ratio: aspectRatio.optional(),
-	angle: angle.optional(),
-	tags: tagList.default([]),
-	source: z.string().trim().min(1).max(100).optional(),
-	notes: notes.optional(),
-	import_ref: importRef.optional()
-});
+// Request-body schemas are .strict(): a misspelled or unknown field fails
+// loudly instead of being silently dropped — an operator hand-writing a
+// curl call must find out their field never landed (CLAUDE.md: zod at
+// every boundary, no silent anything).
+export const assetCreateSchema = z
+	.object({
+		kind: z.enum(assetKinds),
+		title,
+		production_status: z.enum(assetProductionStatuses).default('ready'),
+		external_url: httpUrl.optional(),
+		width: z.number().int().positive().optional(),
+		height: z.number().int().positive().optional(),
+		duration_s: z.number().positive().optional(),
+		aspect_ratio: aspectRatio.optional(),
+		angle: angle.optional(),
+		tags: tagList.default([]),
+		source: z.string().trim().min(1).max(100).optional(),
+		notes: notes.optional(),
+		import_ref: importRef.optional()
+	})
+	.strict();
 export type AssetCreate = z.infer<typeof assetCreateSchema>;
 
 // import_ref is provenance — settable at creation/import, not by PATCH.
@@ -113,6 +119,7 @@ export const assetUpdateSchema = z
 		source: z.string().trim().min(1).max(100).nullable(),
 		notes: notes.nullable()
 	})
+	.strict()
 	.partial()
 	.refine((patch) => Object.keys(patch).length > 0, {
 		message: 'update must change at least one field'
@@ -138,15 +145,17 @@ export const copyVariantRowSchema = z.object({
 });
 export type CopyVariantRow = z.infer<typeof copyVariantRowSchema>;
 
-export const copyVariantCreateSchema = z.object({
-	kind: z.enum(copyVariantKinds),
-	body: z.string().trim().min(1).max(5000),
-	angle: angle.optional(),
-	tone: z.string().trim().min(1).max(100).optional(),
-	tags: tagList.default([]),
-	notes: notes.optional(),
-	import_ref: importRef.optional()
-});
+export const copyVariantCreateSchema = z
+	.object({
+		kind: z.enum(copyVariantKinds),
+		body: z.string().trim().min(1).max(5000),
+		angle: angle.optional(),
+		tone: z.string().trim().min(1).max(100).optional(),
+		tags: tagList.default([]),
+		notes: notes.optional(),
+		import_ref: importRef.optional()
+	})
+	.strict();
 export type CopyVariantCreate = z.infer<typeof copyVariantCreateSchema>;
 
 export const copyVariantUpdateSchema = z
@@ -158,6 +167,7 @@ export const copyVariantUpdateSchema = z
 		tags: tagList,
 		notes: notes.nullable()
 	})
+	.strict()
 	.partial()
 	.refine((patch) => Object.keys(patch).length > 0, {
 		message: 'update must change at least one field'
@@ -195,6 +205,7 @@ export const creativeCreateSchema = z
 		notes: z.string().trim().min(1).max(2000).optional(),
 		status: z.enum(creativeStatuses).default('draft')
 	})
+	.strict()
 	.refine((combo) => combo.asset_id || combo.headline_id || combo.primary_text_id || combo.cta_id, {
 		message: 'a combo needs at least one component (asset or copy piece)'
 	});
@@ -220,6 +231,7 @@ export const creativeUpdateSchema = z
 		notes: z.string().trim().min(1).max(2000).nullable(),
 		status: z.enum(creativeStatuses)
 	})
+	.strict()
 	.partial()
 	.refine((patch) => Object.keys(patch).length > 0, {
 		message: 'update must change at least one field'

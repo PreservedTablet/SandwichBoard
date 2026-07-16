@@ -1,4 +1,4 @@
-import { MetricParseError, parseCount, parseMoneyToCents } from './metrics.js';
+import { MetricParseError, parseCount, parseDecimal, parseMoneyToCents } from './metrics.js';
 
 /**
  * Google Ads CSV ingestion contract (docs/plan/06 Phase 2 Session 2b, 04) —
@@ -145,8 +145,9 @@ export function normalizeGoogleCsvRecord(
 	const conversionsRaw = cell('conversions');
 	let conversions = 0;
 	if (conversionsRaw !== '') {
-		conversions = Number(conversionsRaw);
-		if (!Number.isFinite(conversions) || conversions < 0 || /[,\s]/.test(conversionsRaw)) {
+		try {
+			conversions = parseDecimal(conversionsRaw);
+		} catch {
 			throw new MetricParseError(
 				`conversions ${JSON.stringify(conversionsRaw)} — expected a plain non-negative decimal`
 			);

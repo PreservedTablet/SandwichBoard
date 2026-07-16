@@ -57,6 +57,7 @@ export const recommendationUpdateSchema = z
 		status: z.enum(recommendationStatuses),
 		outcome_note: z.string().trim().min(1).max(5000).nullable()
 	})
+	.strict()
 	.partial()
 	.refine((patch) => Object.keys(patch).length > 0, {
 		message: 'update must change at least one field'

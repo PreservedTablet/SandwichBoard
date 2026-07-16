@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MetricParseError, parseCount, parseMoneyToCents } from '../src/metrics.js';
+import { MetricParseError, parseCount, parseDecimal, parseMoneyToCents } from '../src/metrics.js';
 
 describe('parseMoneyToCents', () => {
 	it('parses platform decimal strings into integer cents', () => {
@@ -41,6 +41,23 @@ describe('parseCount', () => {
 	it('rejects decimals, negatives, and junk', () => {
 		for (const bad of ['1.5', '-1', '', 'abc', '1e3']) {
 			expect(() => parseCount(bad), bad).toThrow(MetricParseError);
+		}
+	});
+});
+
+describe('parseDecimal', () => {
+	it('parses plain non-negative decimals (fractional conversions)', () => {
+		expect(parseDecimal('2')).toBe(2);
+		expect(parseDecimal('2.5')).toBe(2.5);
+		expect(parseDecimal(' 0.25 ')).toBe(0.25);
+		expect(parseDecimal('0')).toBe(0);
+	});
+
+	it('rejects what bare Number() would silently accept', () => {
+		// '1e3' → 1000 and '0x10' → 16 under Number(); a mangled export cell
+		// must deadletter, never invent a conversion count.
+		for (const bad of ['1e3', '0x10', '-1', 'Infinity', 'NaN', '1,5', '', ' ']) {
+			expect(() => parseDecimal(bad), bad).toThrow(MetricParseError);
 		}
 	});
 });

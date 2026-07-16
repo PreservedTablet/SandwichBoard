@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MetricParseError, parseCount, parseMoneyToCents } from './metrics.js';
+import { MetricParseError, parseCount, parseDecimal, parseMoneyToCents } from './metrics.js';
 
 /**
  * Shapes of Meta's official Ads CLI JSON output (`meta-ads==1.1.0`,
@@ -135,11 +135,11 @@ export function normalizeMetaInsightsRow(
 		clicks: row.clicks === undefined ? 0 : parseCount(row.clicks),
 		conversions:
 			sumActionValues(row.actions, conversionTypes, (value) => {
-				const n = Number(value.trim());
-				if (!Number.isFinite(n) || n < 0 || value.trim() === '') {
+				try {
+					return parseDecimal(value);
+				} catch {
 					throw new MetricParseError(`unparseable action value ${JSON.stringify(value)}`);
 				}
-				return n;
 			}) ?? 0,
 		conversionValueCents: sumActionValues(row.action_values, conversionTypes, parseMoneyToCents),
 		videoThruplays: thruplays ?? null

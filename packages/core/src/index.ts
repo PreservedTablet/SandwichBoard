@@ -66,6 +66,7 @@ export {
 	SETTINGS_KEY_GATE_MIN_SPEND_CENTS,
 	SETTINGS_KEY_META_CONVERSION_ACTION_TYPES,
 	parseCount,
+	parseDecimal,
 	parseMoneyToCents
 } from './metrics.js';
 export {
