@@ -44,17 +44,11 @@
 
 	// -- ad name + UTM generator (the acceptance loop) ------------------------
 	let campaignInput = $state('');
-	let version = $state(1);
+	let version = $state<number | null>(1);
 	let platform = $state('meta');
 	let medium = $state<'paid' | 'organic'>('paid');
 	let baseUrl = $state('');
 	const campaignSlug = $derived(slugifyCampaign(campaignInput));
-	$effect(() => {
-		// A full-URL landing path pre-fills the tagged-link destination.
-		if (creative.landing_path?.startsWith('http') && !baseUrl) {
-			baseUrl = creative.landing_path;
-		}
-	});
 
 	let result = $state<AdNameResponse | null>(null);
 	let nameError = $state('');
@@ -62,9 +56,31 @@
 	let prefixInput = $state('');
 	let generating = $state(false);
 
+	// Seed the composer per combo: a full-URL landing path pre-fills the
+	// tagged-link destination, and stale results clear when client-side
+	// navigation reuses this component for a different combo. The id guard
+	// (a plain variable, deliberately untracked) keeps this from re-running
+	// on user edits — the operator can clear the field without it refilling.
+	let seededFor: string | null = null;
+	$effect(() => {
+		if (seededFor !== creative.id) {
+			seededFor = creative.id;
+			baseUrl = creative.landing_path?.startsWith('http') ? creative.landing_path : '';
+			result = null;
+			nameError = '';
+			prefixMissing = false;
+		}
+	});
+
 	async function generate() {
 		if (!campaignSlug || !isValidCampaignSlug(campaignSlug)) {
 			nameError = 'enter a campaign name first';
+			return;
+		}
+		// A cleared number input binds null — catch it here instead of
+		// sending "null" to the API and surfacing a raw validation error.
+		if (version === null || !Number.isInteger(version) || version < 1 || version > 999999) {
+			nameError = 'version must be a whole number from 1 to 999999';
 			return;
 		}
 		generating = true;

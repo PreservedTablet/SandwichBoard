@@ -17,17 +17,46 @@
 		void goto(withQuery(resolve('/metrics'), params), { keepFocus: true });
 	}
 
-	// last-30d series per combo for the sparklines (rows arrive date-ordered)
+	// last-30d series per combo for the sparklines, zero-filled over the
+	// window's full date axis: days without delivery render as dips to zero
+	// at their real position, instead of being skipped and compressing a
+	// 3-delivery-day combo into a misleading 3-point "30 day" line.
 	const seriesByCreative = $derived.by(() => {
 		const map = new SvelteMap<string, { spend: number[]; ctr: number[] }>();
-		for (const row of data.daily.items) {
-			let entry = map.get(row.creative_id);
-			if (!entry) {
-				entry = { spend: [], ctr: [] };
-				map.set(row.creative_id, entry);
+		const items = data.daily.items;
+		if (items.length === 0) return map;
+		let min = items[0].date;
+		let max = items[0].date;
+		for (const row of items) {
+			if (row.date < min) min = row.date;
+			if (row.date > max) max = row.date;
+		}
+		const axis: string[] = [];
+		const end = Date.parse(`${max}T00:00:00Z`);
+		for (let t = Date.parse(`${min}T00:00:00Z`); t <= end; t += 86_400_000) {
+			axis.push(new Date(t).toISOString().slice(0, 10));
+		}
+		// Plain Maps are fine here: they are locals rebuilt on every $derived
+		// run, never mutated after this function returns — but the lint rule
+		// can't see that, and SvelteMap is harmless.
+		const byCreativeDate = new SvelteMap<string, SvelteMap<string, (typeof items)[number]>>();
+		for (const row of items) {
+			let inner = byCreativeDate.get(row.creative_id);
+			if (!inner) {
+				inner = new SvelteMap();
+				byCreativeDate.set(row.creative_id, inner);
 			}
-			entry.spend.push(row.spend_cents / 100);
-			entry.ctr.push(row.impressions > 0 ? row.clicks / row.impressions : 0);
+			inner.set(row.date, row);
+		}
+		for (const [creativeId, rows] of byCreativeDate) {
+			const spend: number[] = [];
+			const ctr: number[] = [];
+			for (const date of axis) {
+				const row = rows.get(date);
+				spend.push(row ? row.spend_cents / 100 : 0);
+				ctr.push(row && row.impressions > 0 ? row.clicks / row.impressions : 0);
+			}
+			map.set(creativeId, { spend, ctr });
 		}
 		return map;
 	});
@@ -39,6 +68,7 @@
 	let customerId = $state('');
 	let accountLabel = $state('');
 	let csvFile = $state<File | null>(null);
+	let csvFileInput = $state<HTMLInputElement | null>(null);
 	let uploading = $state(false);
 	let uploadProblems = $state<string[]>([]);
 	let uploadResult = $state<string | null>(null);
@@ -81,6 +111,9 @@
 				`${summary.snapshot_rows_upserted} snapshot rows, ` +
 				`${summary.ads_matched}/${summary.ads_synced} ads matched`;
 			csvFile = null;
+			// The state and the visible input must agree — otherwise the input
+			// still shows the ingested filename while "no file picked" errors.
+			if (csvFileInput) csvFileInput.value = '';
 			await invalidateAll();
 		} catch (err) {
 			if (err instanceof ApiError && err.status === 401) {
@@ -224,7 +257,7 @@
 		</label>
 		<label class="field">
 			Report CSV
-			<input type="file" accept=".csv,text/csv" onchange={onFileChange} />
+			<input bind:this={csvFileInput} type="file" accept=".csv,text/csv" onchange={onFileChange} />
 		</label>
 		<button class="primary" onclick={() => void uploadCsv()} disabled={uploading}>
 			{uploading ? 'Ingesting…' : 'Ingest CSV'}

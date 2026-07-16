@@ -16,7 +16,7 @@
 
 <div class="row" style="justify-content: space-between; margin-bottom: 1rem;">
 	<h1 style="margin: 0;">Combos</h1>
-	<a href={resolve('/combos/new')}><button class="primary">+ Build combo</button></a>
+	<a class="button primary" href={resolve('/combos/new')}>+ Build combo</a>
 </div>
 
 <div class="row" style="margin-bottom: 1rem;">

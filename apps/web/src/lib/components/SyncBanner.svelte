@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { invalidate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { api, ApiError, type SyncStatus } from '$lib/api';
 	import { clearInternalToken, getInternalToken, storeInternalToken } from '$lib/internal-token';
@@ -8,10 +9,15 @@
 	 * so the dashboard always says how old the numbers are — and offers the
 	 * "Sync now" button. The button needs the operator's INTERNAL_API_TOKEN
 	 * once per browser session (kept in sessionStorage, never persisted).
+	 *
+	 * Status arrives from the layout load ('app:sync-status'), so any page
+	 * action that invalidates — CSV ingest, deadletter resolve, this
+	 * component's own Sync now — refreshes the banner too.
 	 */
 
-	let status = $state<SyncStatus | null>(null);
-	let loadError = $state<string | null>(null);
+	let { status, loadError = null }: { status: SyncStatus | null; loadError?: string | null } =
+		$props();
+
 	let syncing = $state(false);
 	let syncError = $state<string | null>(null);
 	let lastRunLine = $state<string | null>(null);
@@ -31,15 +37,6 @@
 		)
 	);
 
-	async function load(): Promise<void> {
-		try {
-			status = await api.syncStatus();
-			loadError = null;
-		} catch (err) {
-			loadError = err instanceof Error ? err.message : 'failed to load sync status';
-		}
-	}
-
 	async function syncNow(): Promise<void> {
 		const token = tokenInput.trim() || getInternalToken();
 		if (!token) {
@@ -58,7 +55,7 @@
 				`${summary.snapshot_rows_upserted} snapshot rows, ` +
 				`${summary.ads_matched}/${summary.ads_synced} ads matched` +
 				(summary.deadletters > 0 ? `, ${summary.deadletters} deadlettered` : '');
-			await load();
+			await invalidate('app:sync-status');
 		} catch (err) {
 			if (err instanceof ApiError && err.status === 401) {
 				clearInternalToken();
@@ -71,10 +68,6 @@
 			syncing = false;
 		}
 	}
-
-	$effect(() => {
-		void load();
-	});
 </script>
 
 {#if loadError}

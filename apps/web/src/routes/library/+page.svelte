@@ -10,8 +10,12 @@
 
 	let { data } = $props();
 
-	// Tag cloud comes from what's loaded — enough at library scale.
-	const allTags = $derived([...new Set(data.assets.flatMap((asset) => asset.tags))].sort());
+	// Tag cloud comes from what's loaded — enough at library scale. Active
+	// tags are unioned in so a filter that matches nothing still shows its
+	// own chip (otherwise the only way out is editing the URL).
+	const allTags = $derived(
+		[...new Set([...data.activeTags, ...data.assets.flatMap((asset) => asset.tags)])].sort()
+	);
 
 	const statusCounts = $derived(
 		data.assets.reduce(

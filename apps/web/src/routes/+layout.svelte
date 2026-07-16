@@ -5,7 +5,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import SyncBanner from '$lib/components/SyncBanner.svelte';
 
-	let { children } = $props();
+	let { children, data } = $props();
 
 	const sections = [
 		{ href: resolve('/library'), label: 'Library' },
@@ -38,6 +38,6 @@
 			{/each}
 		</nav>
 	</header>
-	<SyncBanner />
+	<SyncBanner status={data.syncStatus} loadError={data.syncStatusError} />
 	{@render children()}
 </div>

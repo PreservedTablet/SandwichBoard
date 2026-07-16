@@ -59,19 +59,29 @@
 	// -- file upload + preview ----------------------------------------------
 	let fileInput = $state<HTMLInputElement | null>(null);
 	let previewUrl = $state<string | null>(null);
+	let previewError = $state<string | null>(null);
 
 	$effect(() => {
 		if (!asset.storage_path) {
 			previewUrl = null;
+			previewError = null;
 			return;
 		}
 		let cancelled = false;
 		api
 			.getAssetFileUrl(asset.id)
 			.then(({ url }) => {
-				if (!cancelled) previewUrl = url;
+				if (!cancelled) {
+					previewUrl = url;
+					previewError = null;
+				}
 			})
-			.catch(() => undefined);
+			.catch((err: unknown) => {
+				// Surface, never swallow: a missing preview is information.
+				if (!cancelled) {
+					previewError = err instanceof Error ? err.message : 'preview unavailable';
+				}
+			});
 		return () => {
 			cancelled = true;
 		};
@@ -118,6 +128,9 @@
 <div class="panel" style="margin-top: 1rem;">
 	<h2 style="margin-top: 0;">File</h2>
 	{#if asset.storage_path}
+		{#if previewError}
+			<p class="error">Preview unavailable: {previewError}</p>
+		{/if}
 		{#if previewUrl && asset.storage_content_type?.startsWith('image/') && asset.storage_content_type !== 'image/svg+xml'}
 			<img
 				src={previewUrl}

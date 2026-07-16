@@ -9,7 +9,11 @@
 
 	let { data } = $props();
 
-	const allTags = $derived([...new Set(data.variants.flatMap((variant) => variant.tags))].sort());
+	// Union in active tags so a filter that matches nothing keeps its chip
+	// visible (and removable).
+	const allTags = $derived(
+		[...new Set([...data.activeTags, ...data.variants.flatMap((variant) => variant.tags)])].sort()
+	);
 
 	function toggleParam(name: 'kind' | 'tag', value: string) {
 		const params = new SvelteURLSearchParams(page.url.searchParams);
